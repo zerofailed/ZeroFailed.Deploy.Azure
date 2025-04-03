@@ -34,11 +34,12 @@ Describe 'Convert-UnicodeToEscapeHex' {
     Context 'When given a JSON string and compressed output is not requested' {
         It 'Should return the original string' {
             $inputJson = '{"key": "value"}'
-            $expectedOutput = @'
-{
-  "key": "value"
-}
-'@        
+            $expectedOutput = @(
+                '{',
+                '  "key": "value"',
+                '}'
+            ) -join [System.Environment]::NewLine
+
             $result = Convert-UnicodeToEscapeHex -JsonString $inputJson
             
             $result | Should -BeExactly $expectedOutput
