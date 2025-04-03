@@ -15,21 +15,26 @@ task createAppInsightsReleaseAnnotation -If { !$SkipCreateAppInsightsReleaseAnno
     #     Properties = @{}
     #     WorkspaceResourceId = ''
     # }
-    $configIsValid = $AppInsightsReleaseAnnotationDetails.Name -and $AppInsightsReleaseAnnotationDetails.WorkspaceResourceId
+    $configIsValid = $AppInsightsReleaseAnnotationDetails.ContainsKey("Name") -and $AppInsightsReleaseAnnotationDetails.ContainsKey("WorkspaceResourceId")
 
     if ($configIsValid) {
         Write-Build Green "Creating App Insights release annotation..."
+
+        # Support deferred evaluation of configuration properties
+        $name = Resolve-Value $AppInsightsReleaseAnnotationDetails.Name
+        $properties = Resolve-Value $AppInsightsReleaseAnnotationDetails.Properties
+        $workspaceResourceId = Resolve-Value $AppInsightsReleaseAnnotationDetails.WorkspaceResourceId
     
         $annotation = @{         
             Id             = [Guid]::NewGuid()
-            AnnotationName = $AppInsightsReleaseAnnotationDetails.Name
+            AnnotationName = $name
             EventTime      = (Get-Date).ToUniversalTime().GetDateTimeFormats("s")[0]
             Category       = "Deployment"
-            Properties     = ConvertTo-Json $AppInsightsReleaseAnnotationDetails.Properties -Compress
+            Properties     = ConvertTo-Json $properties -Compress
         }        
         $annotation = ConvertTo-Json $annotation -Compress
         $annotation = Convert-UnicodeToEscapeHex -JsonString $annotation
-        $uri = "https://management.azure.com{0}/Annotations?api-version=2020-02-02" -f $AppInsightsReleaseAnnotationDetails.WorkspaceResourceId
+        $uri = "https://management.azure.com{0}/Annotations?api-version=2020-02-02" -f $workspaceResourceId
     
         Invoke-AzRestMethod -Method PUT -Uri $uri -Payload $annotation | Out-Null
     }
