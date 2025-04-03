@@ -3,7 +3,7 @@
 # </copyright>
 
 # Synopsis: When true, an App Insights release annotation will not be created.
-$SkipCreateAppInsightsReleaseAnnotation = property ZF_DEPLOY_SKIP_CREATE_APP_INSIGHTS_RELEASE_ANNOTATION $false
+$SkipCreateAppInsightsReleaseAnnotation = [Convert]::ToBoolean((property ZF_DEPLOY_SKIP_CREATE_APP_INSIGHTS_RELEASE_ANNOTATION $false))
 
 # Synopsis: Configures the App Insights release annotation to be created.
 # This should be a hashtable with the following properties:

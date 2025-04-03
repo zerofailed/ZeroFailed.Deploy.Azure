@@ -3,7 +3,7 @@
 # </copyright>
 
 # Synopsis: When true, skips any configured ARM deployments. Defaults to false.
-$SkipArmDeployments = property ZF_DEPLOY_SKIP_ARM_DEPLOYMENTS $false
+$SkipArmDeployments = [Convert]::ToBoolean((property ZF_DEPLOY_SKIP_ARM_DEPLOYMENTS $false))
 
 # Synopsis: Details the ARM deployments that need to be run for the deployment process. **TODO: CONFIG docs**
 $RequiredArmDeployments = property ZF_DEPLOY_REQUIRED_ARM_DEPLOYMENTS @()

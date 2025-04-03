@@ -13,6 +13,6 @@
 $AppServiceAppsToDeploy = @()
 
 # Synopsis: When true, any configured App Service deployments will be skipped.
-$SkipAppServiceAppDeployment = property ZF_DEPLOY_SKIP_APP_SERVICE_DEPLOYMENT $false
+$SkipAppServiceAppDeployment = [Convert]::ToBoolean((property ZF_DEPLOY_SKIP_APP_SERVICE_DEPLOYMENT $false))
 
-$AppServiceRequiresTemporaryNetworkAccess = property ZF_DEPLOY_APP_SERVICE_TEMP_NETWORK_ACCESS $false
+$AppServiceRequiresTemporaryNetworkAccess = [Convert]::ToBoolean((property ZF_DEPLOY_APP_SERVICE_TEMP_NETWORK_ACCESS $false))
