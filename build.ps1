@@ -17,7 +17,7 @@ param (
     [string] $LogLevel = "minimal",
 
     [Parameter()]
-    [string] $ZfModuleVersion = "1.0.2",
+    [string] $ZfModuleVersion = "1.0.6",
 
     [Parameter()]
     [version] $InvokeBuildModuleVersion = "5.12.1"
