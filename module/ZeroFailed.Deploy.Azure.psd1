@@ -90,7 +90,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        # Tags = @()
+        Tags = @("ZeroFailed")
 
         # A URL to the license for this module.
         LicenseUri = 'https://github.com/zerofailed/ZeroFailed.Deploy.Azure/blob/main/LICENSE'
@@ -114,6 +114,18 @@ PrivateData = @{
         ExternalModuleDependencies = @()
 
     } # End of PSData hashtable
+
+    # ZeroFailed metadata
+    ZeroFailed = @{
+        ExtensionDependencies = @(
+            @{
+                # Assume latest stable version
+                Name = "ZeroFailed.Deploy.Common"
+                GitRepository = "https://github.com/zerofailed/ZeroFailed.Deploy.Common"
+                Process = "tasks/deploy.process.ps1"
+            }
+        )
+    }
 
 } # End of PrivateData hashtable
 
