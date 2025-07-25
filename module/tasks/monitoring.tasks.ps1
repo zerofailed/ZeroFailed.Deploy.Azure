@@ -5,7 +5,7 @@
 . $PSScriptRoot/monitoring.properties.ps1
 
 # Synopsis: Create an App Insights release annotation
-task createAppInsightsReleaseAnnotation -If { !$SkipCreateAppInsightsReleaseAnnotation } `
+task createAppInsightsReleaseAnnotation -If { !$SkipCreateAppInsightsReleaseAnnotation -and $IsAzureDevOpsRelease } `
                                         -After DeployCore `
                                         -Before PostDeploy {
 
