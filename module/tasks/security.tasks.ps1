@@ -38,3 +38,12 @@ task removeTemporaryNetworkAccess -If {$EnableTemporaryNetworkAccess} -After Pos
     Assert-TemporaryNetworkAccessRules -RequiredResources $TemporaryNetworkAccessRequiredResources -Revoke
     Remove-Item variable:/__TEMPORARY_NETWORK_ACCESS_RULES__ -Force -ErrorAction Ignore
 }
+
+# Synopsis: Configures up the Azure PowerShell and/or Azure CLI connection context for the deployment
+task connectAzure -If { !$SkipConnectAzure } -After InitCore readConfiguration,{
+    Connect-CorvusAzure `
+        -SubscriptionId $script:DeploymentConfig.azureSubscriptionId `
+        -AadTenantId $script:DeploymentConfig.AzureTenantId `
+        -SkipAzPowerShell:$SkipConnectAzurePowerShell `
+        -SkipAzureCli:$SkipConnectAzureCli
+}
