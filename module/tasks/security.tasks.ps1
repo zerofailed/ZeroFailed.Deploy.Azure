@@ -4,6 +4,8 @@
 
 . $PSScriptRoot/security.properties.ps1
 
+$_TEMP_NET_ACCESS_FLAG_NAME = '__TEMPORARY_NETWORK_ACCESS_RULES__'
+
 # Synopsis: Derive the current user's ObjectId (aka PrincipalId) using the current Azure PowerShell context.
 task getDeploymentIdentity -If { !$SkipGetDeploymentIdentity } -After InitCore {
 
@@ -35,7 +37,7 @@ task enableTemporaryNetworkAccess -If {$EnableTemporaryNetworkAccess} -Before Pr
         $script:TemporaryNetworkAccessRequiredResources[$i].Name = Resolve-Value $TemporaryNetworkAccessRequiredResources[$i].Name
     }
 
-    $script:__TEMPORARY_NETWORK_ACCESS_RULES__ = $true
+    Set-Variable -Name $_TEMP_NET_ACCESS_FLAG_NAME -Value $true -Scope Script
     Assert-TemporaryNetworkAccessRules -RequiredResources $TemporaryNetworkAccessRequiredResources
 }
 
@@ -46,7 +48,7 @@ $_cleanupTemporaryNetworkAccess = {
     if ($EnableTemporaryNetworkAccess -and (Test-Path variable:/__TEMPORARY_NETWORK_ACCESS_RULES__)) {
         Write-Build White "Removing temporary network access rules..."
         Assert-TemporaryNetworkAccessRules -RequiredResources $TemporaryNetworkAccessRequiredResources -Revoke
-        Remove-Item variable:/__TEMPORARY_NETWORK_ACCESS_RULES__ -Scope script -Force
+        Remove-Variable -Name $_TEMP_NET_ACCESS_FLAG_NAME -Scope Script -Force
     }
 }
 $script:OnExitActions.Add($_cleanupTemporaryNetworkAccess)
