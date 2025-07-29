@@ -29,6 +29,12 @@ task getDeploymentIdentity -If { !$SkipGetDeploymentIdentity } -After InitCore {
 
 # Synopsis: Apply temporary network access rules to the configured Azure resources.
 task enableTemporaryNetworkAccess -If {$EnableTemporaryNetworkAccess} -Before PreDeploy {
+    # support deferred evaluation for certain properties in 'TemporaryNetworkAccessRequiredResources'
+    for ($i=0; $i -lt $TemporaryNetworkAccessRequiredResources.Count; $i++) {
+        $script:TemporaryNetworkAccessRequiredResources[$i].ResourceGroupName = Resolve-Value $TemporaryNetworkAccessRequiredResources[$i].ResourceGroupName
+        $script:TemporaryNetworkAccessRequiredResources[$i].Name = Resolve-Value $TemporaryNetworkAccessRequiredResources[$i].Name
+    }
+
     $script:__TEMPORARY_NETWORK_ACCESS_RULES__ = $true
     Assert-TemporaryNetworkAccessRules -RequiredResources $TemporaryNetworkAccessRequiredResources
 }
