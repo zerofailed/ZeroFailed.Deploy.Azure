@@ -39,11 +39,17 @@ task enableTemporaryNetworkAccess -If {$EnableTemporaryNetworkAccess} -Before Pr
     Assert-TemporaryNetworkAccessRules -RequiredResources $TemporaryNetworkAccessRequiredResources
 }
 
-# Synopsis: Remove temporary network access rules from the configured Azure resources
-task removeTemporaryNetworkAccess -If {$EnableTemporaryNetworkAccess} -After PostDeploy{
-    Assert-TemporaryNetworkAccessRules -RequiredResources $TemporaryNetworkAccessRequiredResources -Revoke
-    Remove-Item variable:/__TEMPORARY_NETWORK_ACCESS_RULES__ -Force -ErrorAction Ignore
+# Use the 'OnExitActions' convention provided by the ZF process to ensure that any temporary 
+# network access rules are removed from the configured Azure resources, even if the process
+# has encountered an terminating error.
+$_cleanupTemporaryNetworkAccess = {
+    if ($EnableTemporaryNetworkAccess -and (Test-Path variable:/__TEMPORARY_NETWORK_ACCESS_RULES__)) {
+        Write-Build White "Removing temporary network access rules..."
+        Assert-TemporaryNetworkAccessRules -RequiredResources $TemporaryNetworkAccessRequiredResources -Revoke
+        Remove-Item variable:/__TEMPORARY_NETWORK_ACCESS_RULES__ -Scope script -Force
+    }
 }
+$script:OnExitActions.Add($_cleanupTemporaryNetworkAccess)
 
 # Synopsis: Configures up the Azure PowerShell and/or Azure CLI connection context for the deployment
 task connectAzure -If { !$SkipConnectAzure } -After InitCore readConfiguration,{
