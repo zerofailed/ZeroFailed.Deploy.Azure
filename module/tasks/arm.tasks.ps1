@@ -45,14 +45,19 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
             Tee-Object -Variable deploymentResult
     
         if ($deploymentResult.ProvisioningState -eq 'Succeeded') {
-            $script:ZF_ArmDeploymentOutputs = @{}
-            # Make ARM deployment outputs available to rest of deployment process
-            $deployOutputs = @{}
-            $deploymentResult.Outputs.Keys |
+            if ($deploymentResult.Outputs) {
+                $script:ZF_ArmDeploymentOutputs = @{}
+                # Make ARM deployment outputs available to rest of deployment process
+                $deployOutputs = @{}
+                $deploymentResult.Outputs.Keys |
                 ForEach-Object {
                     $deployOutputs += @{ $_ = $deploymentResult.Outputs[$_].Value }
                 }
-            $script:ZF_ArmDeploymentOutputs += $deployOutputs
+                $script:ZF_ArmDeploymentOutputs += $deployOutputs
+            }
+            else {
+                Write-Warning "ARM Deployment succeeded but no outputs were defined."
+            }
         }
         else {
             Write-Warning "ARM Deployment failed, outputs will not be available."
