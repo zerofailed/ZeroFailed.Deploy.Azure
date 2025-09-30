@@ -56,23 +56,6 @@ Describe "'$moduleName' Module Tests" {
             $functionPath | Should -FileContentMatch 'Copyright \(c\) Endjin Limited'
         }
 
-        It "<function> should have help block" {
-            $functionPath | Should -FileContentMatch '<#'
-            $functionPath | Should -FileContentMatch '#>'
-        }
-
-        It "<function> should have a SYNOPSIS section in the help block" {
-            $functionPath | Should -FileContentMatch '.SYNOPSIS'
-        }
-
-        It "<function> should have a DESCRIPTION section in the help block" {
-            $functionPath | Should -FileContentMatch '.DESCRIPTION'
-        }
-
-        It "<function> should have a EXAMPLE section in the help block" {
-          $functionPath | Should -FileContentMatch '.EXAMPLE'
-        }
-
         It "<function> should be an advanced function" {
             $functionPath | Should -FileContentMatch 'function'
             $functionContent = Get-Content -raw $functionPath

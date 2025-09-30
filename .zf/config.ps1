@@ -13,7 +13,17 @@ $zerofailedExtensions = @(
 # Set the required build options
 $PesterTestsDir = "$here/module"
 $PesterCodeCoveragePaths = @("$PesterTestsDir/functions")
+$PowerShellModulesToPublish = @(
+    @{
+        ModulePath = "$here/module/ZeroFailed.Deploy.Azure.psd1"
+        FunctionsToExport = @("*")
+        CmdletsToExport = @()
+        AliasesToExport = @()
+    }
+)
+$PSMarkdownDocsOutputPath = 'docs/functions'
 $PSMarkdownDocsFlattenOutputPath = $true
+$PSMarkdownDocsIncludeModulePage = $false
 
 # Customise the build process
 task . FullBuild
