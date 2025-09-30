@@ -63,17 +63,20 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
     
         if ($deploymentResult.ProvisioningState -eq 'Succeeded') {
             if ($deploymentResult.Outputs) {
-                $script:ZF_ArmDeploymentOutputs = @{}
                 # Make ARM deployment outputs available to rest of deployment process
-                $deployOutputs = @{}
                 $deploymentResult.Outputs.Keys |
                 ForEach-Object {
-                    $deployOutputs += @{ $_ = $deploymentResult.Outputs[$_].Value }
+                    if ($script:ZF_ArmDeploymentOutputs.ContainsKey($_)) {
+                        Write-Warning "The ARM deployment output '$_' from an earlier deployment has been overwritten - when running multiple ARM deployments ensure any outputs used later in the process are unique"
+                        $script:ZF_ArmDeploymentOutputs[$_] = $deploymentResult.Outputs[$_].Value
+                    }
+                    else {
+                        $script:ZF_ArmDeploymentOutputs.Add($_, $deploymentResult.Outputs[$_].Value)
+                    }
                 }
-                $script:ZF_ArmDeploymentOutputs += $deployOutputs
             }
             else {
-                Write-Warning "ARM Deployment succeeded but no outputs were defined."
+                Write-Build White "ARM Deployment succeeded but no outputs were defined."
             }
         }
         else {

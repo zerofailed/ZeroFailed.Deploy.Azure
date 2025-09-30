@@ -9,4 +9,4 @@ $SkipArmDeployments = [Convert]::ToBoolean((property ZF_DEPLOY_SKIP_ARM_DEPLOYME
 $RequiredArmDeployments = @()
 
 # Synopsis: A script-scoped variable containing the outputs from any ARM deployments that will be available to the rest of the deployment process. Available for overriding as part of niche testing scenarios.
-$script:ZF_ArmDeploymentOutputs = property ZF_DEPLOY_ARM_DEPLOYMENT_OUTPUTS @()
+$script:ZF_ArmDeploymentOutputs = property ZF_DEPLOY_ARM_DEPLOYMENT_OUTPUTS @{}
