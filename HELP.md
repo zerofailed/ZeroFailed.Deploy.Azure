@@ -73,6 +73,10 @@ $RequiredArmDeployments = @(
             "azureTenantId"
             "resourceGroupName"
         )
+        additionalParameters = @{
+            someParameter = 'foo'               # a static value
+            anotherParameter = { Get-Date }     # a dynamic value that will be evaluated at runtime
+        }
     }
 )
 ```
