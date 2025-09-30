@@ -12,7 +12,7 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
     foreach ($armDeployment in $RequiredArmDeployments) {
 
         # Prepare parameters for ARM deployment
-        Write-Host "ARM template parameters:"
+        # 1. Infer parameters from environment configuration settings
         $script:parametersWithValues = @{}
         $script:DeploymentConfig.Keys |
             Where-Object {
@@ -22,6 +22,23 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
                 $script:parametersWithValues += @{ $_ = $script:DeploymentConfig[$_]
             }
         }
+        # 2. Process any explicitly-defined additional parameters
+        if ($armDeployment.ContainsKey('additionalParameters') -and $armDeployment.additionalParameters) {
+            $armDeployment.additionalParameters.Keys |
+            Where-Object { $_ -notin $armDeployment.configKeysToIgnore } |
+            ForEach-Object {
+                if ($parametersWithValues.ContainsKey($_)) {
+                    Write-Verbose "Overriding environment config parameter '$_' via additionalParameters"
+                    $parametersWithValues[$_] = Resolve-Value $armDeployment.additionalParameters[$_]
+                }
+                else {
+                    Write-Verbose "Setting additional parameter '$_'"
+                    $parametersWithValues += @{ $_ = Resolve-Value $armDeployment.additionalParameters[$_] }
+                }
+            }
+        }
+
+        Write-Build White "ARM template parameters:"
         Write-Build White ($script:parametersWithValues | Format-Table | Out-String)
 
         # Support deferred evaluation of ARM deployment configuration values
