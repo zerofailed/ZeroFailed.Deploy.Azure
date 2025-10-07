@@ -66,12 +66,15 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
                 # Make ARM deployment outputs available to rest of deployment process
                 $deploymentResult.Outputs.Keys |
                 ForEach-Object {
+                    # Roundtrip the value via JSON so it is no longer a Newtonsoft-based object with non-standard IEnumerable behaviour
+                    $reserializedValue = $deploymentResult.Outputs[$_].Value | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+
                     if ($script:ZF_ArmDeploymentOutputs.ContainsKey($_)) {
                         Write-Warning "The ARM deployment output '$_' from an earlier deployment has been overwritten - when running multiple ARM deployments ensure any outputs used later in the process are unique"
-                        $script:ZF_ArmDeploymentOutputs[$_] = $deploymentResult.Outputs[$_].Value
+                        $script:ZF_ArmDeploymentOutputs[$_] = $reserializedValue
                     }
                     else {
-                        $script:ZF_ArmDeploymentOutputs.Add($_, $deploymentResult.Outputs[$_].Value)
+                        $script:ZF_ArmDeploymentOutputs.Add($_, $reserializedValue)
                     }
                 }
             }
