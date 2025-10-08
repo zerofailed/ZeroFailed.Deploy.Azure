@@ -6,10 +6,22 @@
 
 # Synopsis: Runs the specified ARM deployments.
 task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDeployments -and $RequiredArmDeployments.Count -ge 1 } `
-               -After ProvisionCore `
-               readConfiguration,connectAzure,{
+                        -After ProvisionCore `
+                        -Jobs readConfiguration,connectAzure,{
     
     foreach ($armDeployment in $RequiredArmDeployments) {
+
+        # Validate required properties
+        $requiredProps = @('templatePath', 'resourceGroupName', 'location')
+        $missingRequiredProps = $requiredProps | Where-Object { $_ -notin $armDeployment.Keys }
+        if ($missingRequiredProps) {
+            throw "Unable to process 'RequiredArmDeployments' configuration due to missing required properties: $($missingRequiredProps -join ', ')"
+        }
+
+        # Validate optional properties
+        if (!$armDeployment.ContainsKey('configKeysToIgnore')) {
+            $armDeployment += @{ $configKeysToIgnore = @() }
+        }
 
         # Prepare parameters for ARM deployment
         # 1. Infer parameters from environment configuration settings
