@@ -6,13 +6,25 @@
 
 # Synopsis: Runs the specified ARM deployments.
 task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDeployments -and $RequiredArmDeployments.Count -ge 1 } `
-               -After ProvisionCore `
-               readConfiguration,connectAzure,{
+                        -After ProvisionCore `
+                        -Jobs readConfiguration,connectAzure,{
     
     foreach ($armDeployment in $RequiredArmDeployments) {
 
+        # Validate required properties
+        $requiredProps = @('templatePath', 'resourceGroupName', 'location')
+        $missingRequiredProps = $requiredProps | Where-Object { $_ -notin $armDeployment.Keys }
+        if ($missingRequiredProps) {
+            throw "Unable to process 'RequiredArmDeployments' configuration due to missing required properties: $($missingRequiredProps -join ', ')"
+        }
+
+        # Validate optional properties
+        if (!$armDeployment.ContainsKey('configKeysToIgnore')) {
+            $armDeployment += @{ $configKeysToIgnore = @() }
+        }
+
         # Prepare parameters for ARM deployment
-        Write-Host "ARM template parameters:"
+        # 1. Infer parameters from environment configuration settings
         $script:parametersWithValues = @{}
         $script:DeploymentConfig.Keys |
             Where-Object {
@@ -22,6 +34,23 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
                 $script:parametersWithValues += @{ $_ = $script:DeploymentConfig[$_]
             }
         }
+        # 2. Process any explicitly-defined additional parameters
+        if ($armDeployment.ContainsKey('additionalParameters') -and $armDeployment.additionalParameters) {
+            $armDeployment.additionalParameters.Keys |
+            Where-Object { $_ -notin $armDeployment.configKeysToIgnore } |
+            ForEach-Object {
+                if ($parametersWithValues.ContainsKey($_)) {
+                    Write-Verbose "Overriding environment config parameter '$_' via additionalParameters"
+                    $parametersWithValues[$_] = Resolve-Value $armDeployment.additionalParameters[$_]
+                }
+                else {
+                    Write-Verbose "Setting additional parameter '$_'"
+                    $parametersWithValues += @{ $_ = Resolve-Value $armDeployment.additionalParameters[$_] }
+                }
+            }
+        }
+
+        Write-Build White "ARM template parameters:"
         Write-Build White ($script:parametersWithValues | Format-Table | Out-String)
 
         # Support deferred evaluation of ARM deployment configuration values
@@ -49,12 +78,15 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
                 # Make ARM deployment outputs available to rest of deployment process
                 $deploymentResult.Outputs.Keys |
                 ForEach-Object {
+                    # Roundtrip the value via JSON so it is no longer a Newtonsoft-based object with non-standard IEnumerable behaviour
+                    $reserializedValue = $deploymentResult.Outputs[$_].Value | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+
                     if ($script:ZF_ArmDeploymentOutputs.ContainsKey($_)) {
                         Write-Warning "The ARM deployment output '$_' from an earlier deployment has been overwritten - when running multiple ARM deployments ensure any outputs used later in the process are unique"
-                        $script:ZF_ArmDeploymentOutputs[$_] = $deploymentResult.Outputs[$_].Value
+                        $script:ZF_ArmDeploymentOutputs[$_] = $reserializedValue
                     }
                     else {
-                        $script:ZF_ArmDeploymentOutputs.Add($_, $deploymentResult.Outputs[$_].Value)
+                        $script:ZF_ArmDeploymentOutputs.Add($_, $reserializedValue)
                     }
                 }
             }

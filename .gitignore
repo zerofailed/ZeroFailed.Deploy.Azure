@@ -1,3 +1,4 @@
 _packages/
 .zf/extensions/
 PesterTestResults.xml
+PesterCodeCoverage.xml

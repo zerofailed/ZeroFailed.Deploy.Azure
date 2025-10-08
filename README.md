@@ -12,7 +12,7 @@ A [ZeroFailed](https://github.com/zerofailed/ZeroFailed) extension that provides
 | Component Type | Included | Notes                                                                                                                                                           |
 | -------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tasks          | yes      |                                                                                                                                                                 |
-| Functions      | yes      |                                                                                                                                                                 |
+| Functions      | yes      | [Function Reference](docs/functions.md)                                                                                                                         |
 | Processes      | no       | Designed to be compatible with the default process provided by the [ZeroFailed.Deploy.Common](https://github.com/zerofailed/ZeroFailed.Deploy.Common) extension |
 
 For more information about the different component types, please refer to the [ZeroFailed documentation](https://github.com/zerofailed/ZeroFailed/blob/main/README.md#extensions).
@@ -40,6 +40,8 @@ kanban
         undoFw[Revert Temp PaaS firewall rules]
     test
 ```
+
+***NOTE:** The temporary PaaS firewall rules functionality makes use of the `OnExitAction` extensibility point provided by the [ZeroFailed.DevOps.Common](https://github.com/zerofailed/ZeroFailed.devops.common) extension to ensure that the rules are reverted before the process ends, even in the event of an error.*
 
 ## Pre-Requisites
 
