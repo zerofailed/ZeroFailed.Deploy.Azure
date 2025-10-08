@@ -47,7 +47,7 @@ Supported resource types:
 ```powershell
 $resources = @(
     @{
-        ResourceType = 'Storage'
+        ResourceType = 'StorageAccount'
         ResourceGroupName = 'my-resource-group'
         Name = 'mystorageaccount'
     },
