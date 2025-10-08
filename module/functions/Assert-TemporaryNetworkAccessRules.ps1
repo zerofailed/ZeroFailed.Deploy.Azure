@@ -4,6 +4,7 @@
 
 function Assert-TemporaryNetworkAccessRules {
     [CmdletBinding()]
+    [OutputType([System.Void])]
     param (
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]

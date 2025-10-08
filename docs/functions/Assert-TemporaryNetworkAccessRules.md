@@ -4,7 +4,7 @@ external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
 Locale: en-GB
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 09/30/2025
+ms.date: 10/08/2025
 PlatyPS schema version: 2024-05-01
 title: Assert-TemporaryNetworkAccessRules
 ---
@@ -42,9 +42,7 @@ Supported resource types:
 
 ## EXAMPLES
 
-### EXAMPLE 1
-
-# Add temporary network access to a storage account and key vault
+### EXAMPLE 1 - Add temporary network access to a storage account and key vault
 
 ```powershell
 $resources = @(
@@ -62,9 +60,7 @@ $resources = @(
 Assert-TemporaryNetworkAccessRules -RequiredResources $resources
 ```
 
-### EXAMPLE 2
-
-# Revoke temporary network access rules previously created
+### EXAMPLE 2 - Revoke temporary network access rules previously created
 
 ```powershell
 Assert-TemporaryNetworkAccessRules -RequiredResources $resources -Revoke
@@ -130,13 +126,13 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## OUTPUTS
 
-### System.Object
+### System.Void
 
-{{ Fill in the Description }}
+This function has no outputs.
 
 ## NOTES
 
-This function requires the Azure PowerShell & Corvus.Deployment modules to be installed and an active connection
+This function requires the Azure PowerShell & [Corvus.Deployment](https://www.powershellgallery.com/packages/Corvus.Deployment) modules to be installed and an active connection
 to an Azure subscription.
 
 ## RELATED LINKS

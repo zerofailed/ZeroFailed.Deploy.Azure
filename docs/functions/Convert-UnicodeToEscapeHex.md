@@ -4,7 +4,7 @@ external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
 Locale: en-GB
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 09/30/2025
+ms.date: 10/08/2025
 PlatyPS schema version: 2024-05-01
 title: Convert-UnicodeToEscapeHex
 ---
@@ -29,8 +29,7 @@ Convert-UnicodeToEscapeHex [-JsonString] <string> [-Compress] [<CommonParameters
 ## DESCRIPTION
 
 The `Convert-UnicodeToEscapeHex` function takes a JSON string as input, parses it into a PowerShell object,
-and processes each property.
-If a property value is a string, it converts any Unicode characters (with a
+and processes each property.  If a property value is a string, it converts any Unicode characters (with a
 decimal value greater than 127) into their escaped hexadecimal representation (e.g., `\u00E9` for "é").
 
 The modified JSON object is then converted back to a JSON string and returned.
@@ -39,9 +38,11 @@ The modified JSON object is then converted back to a JSON string and returned.
 
 ### EXAMPLE 1
 
-$json = '{"Name": "Café", "Description": "A place to enjoy coffee ☕"}'
-PS> Convert-UnicodeToEscapeHex -JsonString $json
+```powershell
+PS:> $json = '{"Name": "Café", "Description": "A place to enjoy coffee ☕"}'
+PS:> Convert-UnicodeToEscapeHex -JsonString $json
 {"Name":"Caf\u00e9","Description":"A place to enjoy coffee \u2615"}
+```
 
 This example demonstrates how the function converts Unicode characters in the input JSON string to their escaped hexadecimal form.
 
@@ -49,8 +50,6 @@ This example demonstrates how the function converts Unicode characters in the in
 
 ### -Compress
 
-A switch parameter that, when specified, compresses the output JSON string.
-If not specified, the output will be pretty-printed.
 A switch parameter that, when specified, compresses the output JSON string.
 If not specified, the output will be pretty-printed.
 
@@ -73,8 +72,6 @@ HelpMessage: ''
 
 ### -JsonString
 
-A JSON-formatted string to be processed.
-This parameter is mandatory.
 A JSON-formatted string to be processed.
 This parameter is mandatory.
 
@@ -110,13 +107,9 @@ The function accepts a JSON string as input.
 
 ## OUTPUTS
 
-### String.
+### System.String
 
 The function returns a JSON string with Unicode characters converted to their escaped hexadecimal representation.
-
-### System.Object
-
-{{ Fill in the Description }}
 
 ## NOTES
 

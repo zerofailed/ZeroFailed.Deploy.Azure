@@ -4,6 +4,7 @@
 
 function Convert-UnicodeToEscapeHex {
     [CmdletBinding()]
+    [OutputType([String])]
     param (
         [parameter(Mandatory)]
         [AllowEmptyString()]
