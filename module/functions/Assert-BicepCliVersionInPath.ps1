@@ -25,7 +25,7 @@ function Assert-BicepCliVersionInPath
         [CmdletBinding()]
         param ()
         $toolOutput = & bicep --version
-        return (_extractBicepVersionFromOutput -VersionMessage $toolOutput)
+        return (_extractBicepVersionFromOutput -VersionMessage "$toolOutput")
     }
     function _getAzBicepVersion {
         [CmdletBinding()]
@@ -35,7 +35,7 @@ function Assert-BicepCliVersionInPath
             [switch] $After
         )
         $toolOutput = & az bicep version
-        return (_extractBicepVersionFromOutput -VersionMessage $toolOutput)
+        return (_extractBicepVersionFromOutput -VersionMessage "$toolOutput")
     }
     function _installAzBicep {
         [CmdletBinding()]
@@ -50,6 +50,7 @@ function Assert-BicepCliVersionInPath
         [CmdletBinding()]
         param (
             [Parameter(Mandatory)]
+            [AllowEmptyString]
             [string] $VersionMessage
         )
         if ($VersionMessage -match "Bicep CLI version (\d+\.\d+\.\d+)") {
