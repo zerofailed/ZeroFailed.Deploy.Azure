@@ -108,9 +108,11 @@ task ensureBicepVersion -If { !$SkipEnsureBicepVersion } {
 
     if ($deploymentRequiresBicep -or $ForceBicepVersionCheck) {
         if ($MinimumBicepVersion) {
+            Write-Build White "Checking for minimum version of Bicep CLI: $MinimumBicepVersion"
             Assert-BicepCliVersionInPath -MinimumBicepVersion $MinimumBicepVersion
         }
         else {
+            Write-Build White "Checking for required version of Bicep CLI: $RequiredBicepVersion"
             Assert-BicepCliVersionInPath -RequiredBicepVersion $RequiredBicepVersion
         }
     }
