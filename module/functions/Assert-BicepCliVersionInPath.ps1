@@ -44,15 +44,8 @@ function Assert-BicepCliVersionInPath
             [string] $Version
         )
         $PSNativeCommandUseErrorActionPreference = $true
-        $currentSetting = & az config get bicep.use_binary_from_path --query value -o tsv
-        Write-Host "use_binary_from_path=$currentSetting"
-        if ($currentSetting -eq 'true') {
-            Write-Host "Updating..."
-            & az config set bicep.use_binary_from_path=false
-            
-            $currentSetting = & az config get bicep.use_binary_from_path --query value -o tsv
-            Write-Host "use_binary_from_path=$currentSetting"
-        }
+        & az config set bicep.check_version=false
+        & az config set bicep.use_binary_from_path=false
         & az bicep install --version $Version
     }
     function _extractBicepVersionFromOutput {
