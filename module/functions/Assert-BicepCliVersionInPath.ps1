@@ -50,7 +50,7 @@ function Assert-BicepCliVersionInPath
         [CmdletBinding()]
         param (
             [Parameter(Mandatory)]
-            [AllowEmptyString]
+            [AllowEmptyString()]
             [string] $VersionMessage
         )
         if ($VersionMessage -match "Bicep CLI version (\d+\.\d+\.\d+)") {
