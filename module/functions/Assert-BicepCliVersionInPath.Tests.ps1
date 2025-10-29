@@ -134,14 +134,18 @@ Describe 'Assert-BicepCliVersionInPath' {
                     Path = '/usr/local/bin/bicep'
                 }
                 Mock Get-Command { $mockCommand } -ParameterFilter { $Name -eq 'bicep' }
-                Mock _getBicepVersion { 'Bicep CLI version 0.38.33 (abc123)' }
+                Mock _getBicepVersion { '0.38.33' }
+                Mock _getAzBicepVersion {}
+                Mock _installAzBicep {}
             }
             
             It 'Should parse version from bicep --version output correctly' {
                 Assert-BicepCliVersionInPath -RequiredBicepVersion '0.38.33'
                 
                 Should -Invoke _getBicepVersion -Times 1
-                Should -Not -Invoke az -ParameterFilter { $Args[0] -eq 'bicep' -and $Args[1] -eq 'install' }
+                Should -Not -Invoke _getAzBicepVersion
+                Should -Not -Invoke _installAzBicep
+                Should -Not -Invoke Set-Item
             }
         }
     }
@@ -204,19 +208,36 @@ Describe 'Assert-BicepCliVersionInPath' {
     }
     
     Context 'Error handling' {
+        BeforeEach {
+            Mock Get-Command {} -ParameterFilter { $Name -eq 'bicep' }
+            Mock _getBicepVersion {}
+            Mock _getAzBicepVersion {}
+            Mock _installAzBicep {}
+        }
+
         It 'Should handle network failures when checking latest version' {
-            Mock Get-Command { $null } -ParameterFilter { $Name -eq 'bicep' }
             Mock Invoke-RestMethod { throw 'Network error' } -ParameterFilter { $Uri -eq 'https://aka.ms/BicepLatestRelease' }
             
             { Assert-BicepCliVersionInPath -RequiredBicepVersion 'latest' } | Should -Throw
+
+            Should -Not -Invoke _getAzBicepVersion
+            Should -Not -Invoke _installAzBicep
+            Should -Not -Invoke Set-Item
         }
         
         It 'Should handle Azure CLI installation failures gracefully' {
-            Mock Get-Command { $null } -ParameterFilter { $Name -eq 'bicep' }
-            Mock _installAzBicep { exit 1 }
-            $PSNativeCommandUseErrorActionPreference = $true
-            
-            { Assert-BicepCliVersionInPath -RequiredBicepVersion '0.38.33' } | Should -Throw
+            # Simulate a native command returning an error
+            Mock _installAzBicep { & ./doesnotexist }
+
+            {
+                $ErrorActionPreference = 'Stop'
+                $PSNativeCommandUseErrorActionPreference = $true
+                Assert-BicepCliVersionInPath -RequiredBicepVersion '0.38.33'
+            } | Should -Throw
+
+            Should -Invoke _getAzBicepVersion -Times 1
+            Should -Invoke _installAzBicep -Times 1
+            Should -Not -Invoke Set-Item
         }
     }
 }
