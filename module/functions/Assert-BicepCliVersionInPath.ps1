@@ -24,12 +24,18 @@ function Assert-BicepCliVersionInPath
     function _getBicepVersion {
         [CmdletBinding()]
         param ()
-        & bicep --version
+        $toolOutput = & bicep --version
+        return (_extractBicepVersionFromOutput -VersionMessage $toolOutput)
     }
     function _getAzBicepVersion {
         [CmdletBinding()]
-        param ()
-        & az bicep version
+        param (
+            # Switches added to enable distinctly mocking multiple calls
+            [switch] $Before,
+            [switch] $After
+        )
+        $toolOutput = & az bicep version
+        return (_extractBicepVersionFromOutput -VersionMessage $toolOutput)
     }
     function _installAzBicep {
         [CmdletBinding()]
@@ -39,6 +45,19 @@ function Assert-BicepCliVersionInPath
         )
         $PSNativeCommandUseErrorActionPreference = $true
         & az bicep install --version $Version
+    }
+    function _extractBicepVersionFromOutput {
+        [CmdletBinding()]
+        param (
+            [Parameter(Mandatory)]
+            [string] $VersionMessage
+        )
+        if ($VersionMessage -match "Bicep CLI version (\d+\.\d+\.\d+)") {
+            return $matches[1]
+        }
+        else {
+            throw "Unable to parse Bicep CLI version: $Version"
+        }
     }
 
     Write-Verbose "Bicep version specification: [RequiredVersion='$RequiredBicepVersion'] [MinimumVersion='$MinimumBicepVersion']"
@@ -53,10 +72,7 @@ function Assert-BicepCliVersionInPath
                                                             $existingBicepCommand.Version.Build
         }
         else {
-            $bicepCliVersionOutput = _getBicepVersion
-            if ($bicepCliVersionOutput -match "Bicep CLI version (\d+\.\d+\.\d+)") {
-                $existingBicepCommandVersion = $matches[1]
-            }
+            $existingBicepCommandVersion = _getBicepVersion
         }
         Write-Host "Existing installation of Bicep is v$existingBicepCommandVersion"
     }
@@ -97,12 +113,16 @@ function Assert-BicepCliVersionInPath
         #   2) insert that path to the front the PATH environment variable, so it is used ahead of any existing version
 
         # Check whether Azure CLI has previously installed the required version
-        $existingAzCliBicepVersion = _getAzBicepVersion
+        $existingAzCliBicepVersion = _getAzBicepVersion -Before
         Write-Verbose "az bicep version: $existingAzCliBicepVersion"
-        if (!$existingAzCliBicepVersion -or $existingAzCliBicepVersion.IndexOf("Bicep CLI version $RequiredBicepVersion") -lt 0) {
+        if (!$existingAzCliBicepVersion -or $existingAzCliBicepVersion -ne $RequiredBicepVersion) {
             Write-Host "Installing Bicep CLI tool via Azure CLI: v$RequiredBicepVersion"
-            _installAzBicep -Version "v$RequiredBicepVersion" | Out-String | Write-Verbose
-            _getAzBicepVersion | Out-String | Write-Verbose
+            _installAzBicep -Version "v$RequiredBicepVersion" | Out-String | Write-Host
+            
+            $existingAzCliBicepVersion = _getAzBicepVersion -After
+            if ($existingAzCliBicepVersion -ne $RequiredBicepVersion) {
+                throw "Unexpected Bicep version found. Expected '$RequiredBicepVersion', found '$existingAzCliBicepVersion'"
+            }
         }
 
         # Update the PATH to ensure the Azure CLI copy of Bicep CLI is used by Az.PowerShell

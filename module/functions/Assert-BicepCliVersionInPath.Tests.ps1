@@ -8,13 +8,14 @@ BeforeAll {
     
     # Make private functions available for mocking
     function _getBicepVersion {}
-    function _getAzBicepVersion {}
+    function _getAzBicepVersion { param ([switch]$Before, [switch]$After)}
     function _installAzBicep { param ($Version) }
     
     # Mock external dependencies
     Mock Get-Command {}
     Mock Invoke-RestMethod { @{ tag_name = 'v0.40.0' } }
     Mock Write-Verbose {}
+    Mock Write-Host {}
     Mock Set-Item {}
     Mock _installAzBicep {}
 }
@@ -24,11 +25,13 @@ Describe 'Assert-BicepCliVersionInPath' {
     Context 'When no Bicep CLI is installed' {
         BeforeEach {
             Mock Get-Command {} -ParameterFilter { $Name -eq 'bicep' }
-            Mock _getAzBicepVersion {}
+            Mock _getAzBicepVersion {} -ParameterFilter { $Before -eq $true }
             Mock _getBicepVersion {}
         }
         
         It 'Should install latest version when RequiredBicepVersion is empty' {
+            Mock _getAzBicepVersion { '0.40.0' } -ParameterFilter { $After -eq $true }
+
             Assert-BicepCliVersionInPath -RequiredBicepVersion ''
             
             Should -Invoke _installAzBicep -Times 1 -ParameterFilter { $Version -eq 'v0.40.0' }
@@ -39,6 +42,8 @@ Describe 'Assert-BicepCliVersionInPath' {
         }
         
         It 'Should install specific version when RequiredBicepVersion is specified' {
+            Mock _getAzBicepVersion { '0.38.33' } -ParameterFilter { $After -eq $true }
+
             Assert-BicepCliVersionInPath -RequiredBicepVersion '0.38.33'
             
             Should -Invoke _installAzBicep -Times 1 -ParameterFilter { $Version -eq 'v0.38.33' }
@@ -49,6 +54,8 @@ Describe 'Assert-BicepCliVersionInPath' {
         }
         
         It 'Should install latest version when using minimum version parameter set' {
+            Mock _getAzBicepVersion { '0.40.0' } -ParameterFilter { $After -eq $true }
+
             Assert-BicepCliVersionInPath -MinimumBicepVersion '0.35.0'
             
             Should -Invoke _installAzBicep -Times 1 -ParameterFilter { $Version -eq 'v0.40.0' }
@@ -67,23 +74,26 @@ Describe 'Assert-BicepCliVersionInPath' {
                     Path = 'C:\Program Files\bicep.exe'
                 }
                 Mock Get-Command { $mockCommand } -ParameterFilter { $Name -eq 'bicep' }
-                Mock _getBicepVersion { "Bicep CLI version $($mockCommand.Version) (def456)" }
+                Mock _getBicepVersion { $mockCommand.Version }
+                Mock _getAzBicepVersion { $mockCommand.Version } -ParameterFilter { $Before -eq $true }
             }
             
             It 'Should not require installation when required version matches installed version available in the PATH' {
-                Mock _getAzBicepVersion {}
+                Mock _getAzBicepVersion {} -ParameterFilter { $Before -eq $true }
     
                 Assert-BicepCliVersionInPath -RequiredBicepVersion '0.38.33'
                 
+                Should -Not -Invoke _getAzBicepVersion
                 Should -Not -Invoke _installAzBicep
                 Should -Not -Invoke Set-Item
             }
             
             It 'Should require installation when required version differs from installed version available in the PATH and via Azure CLI' {
-                Mock _getAzBicepVersion { 'Bicep CLI version 0.38.33 (def456)' }
+                Mock _getAzBicepVersion { '0.39.0' } -ParameterFilter { $After -eq $true }
                 
                 Assert-BicepCliVersionInPath -RequiredBicepVersion '0.39.0'
                 
+                Should -Invoke _getAzBicepVersion -Times 2
                 Should -Invoke _installAzBicep -Times 1 -ParameterFilter { $Version -eq 'v0.39.0' }
                 Should -Invoke Set-Item -Times 1 -ParameterFilter {
                     $Path -eq 'env:/PATH' -and 
@@ -91,11 +101,13 @@ Describe 'Assert-BicepCliVersionInPath' {
                 }
             }
             
-            It 'Should upgrade when installed version version available in the PATH and via Azure CLI is below minimum version' {
-                Mock _getAzBicepVersion { 'Bicep CLI version 0.38.33 (def456)' }
+            It 'Should upgrade to latest version when installed version available in the PATH and via Azure CLI is below minimum version' {
+                Mock _getAzBicepVersion { '0.38.33' } -ParameterFilter { $Before -eq $true }
+                Mock _getAzBicepVersion { '0.40.0' } -ParameterFilter { $After -eq $true }
                 
                 Assert-BicepCliVersionInPath -MinimumBicepVersion '0.39.0'
                 
+                Should -Invoke _getAzBicepVersion -Times 2
                 Should -Invoke _installAzBicep -Times 1 -ParameterFilter { $Version -eq 'v0.40.0' }
                 Should -Invoke Set-Item -Times 1 -ParameterFilter {
                     $Path -eq 'env:/PATH' -and 
@@ -108,6 +120,7 @@ Describe 'Assert-BicepCliVersionInPath' {
                 
                 Assert-BicepCliVersionInPath -MinimumBicepVersion '0.38.0'
                 
+                Should -Not -Invoke _getAzBicepVersion
                 Should -Not -Invoke _installAzBicep
                 Should -Not -Invoke Set-Item
             }
@@ -137,13 +150,15 @@ Describe 'Assert-BicepCliVersionInPath' {
         BeforeEach {
             Mock Get-Command { $null } -ParameterFilter { $Name -eq 'bicep' }
             Mock _getBicepVersion {}
-            Mock _getAzBicepVersion {}
+            Mock _getAzBicepVersion {} -ParameterFilter { $Before -eq $true }
+            Mock _getAzBicepVersion { '0.40.0' } -ParameterFilter { $After -eq $true }
         }
         
         It 'Should resolve "latest" to actual latest version from GitHub API' {
             Assert-BicepCliVersionInPath -RequiredBicepVersion 'latest'
             
             Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Uri -eq 'https://aka.ms/BicepLatestRelease' }
+            Should -Invoke _getAzBicepVersion -Times 2
             Should -Invoke _installAzBicep -Times 1 -ParameterFilter { $Version -eq 'v0.40.0' }
             Should -Invoke Set-Item -Times 1 -ParameterFilter {
                 $Path -eq 'env:/PATH' -and 
@@ -156,17 +171,35 @@ Describe 'Assert-BicepCliVersionInPath' {
         BeforeEach {
             Mock Get-Command { $null } -ParameterFilter { $Name -eq 'bicep' }
             Mock _getBicepVersion {}
-            Mock _getAzBicepVersion { 'Bicep CLI version 0.38.33 (def456)' }
+            Mock _getAzBicepVersion { '0.38.33' } -ParameterFilter { $Before -eq $true }
         }
         
         It 'Should skip installation if Azure CLI already has the required version and update the PATH' {
             Assert-BicepCliVersionInPath -RequiredBicepVersion '0.38.33'
             
+            Should -Invoke _getAzBicepVersion -Times 1
             Should -Not -Invoke _installAzBicep
             Should -Invoke Set-Item -Times 1 -ParameterFilter {
                 $Path -eq 'env:/PATH' -and 
                 $Value -eq (@([IO.Path]::Join($HOME, '.azure', 'bin'), $env:PATH -join [IO.Path]::PathSeparator))
             }
+        }
+    }
+
+    Context 'When Azure CLI installation does not work as expected' {
+        BeforeEach {
+            Mock Get-Command { $null } -ParameterFilter { $Name -eq 'bicep' }
+            Mock _getBicepVersion {}
+            # Simulate the installation not updating the available version
+            Mock _getAzBicepVersion { '0.38.33' }
+        }
+        
+        It 'Should throw an exception reporting the installation did not work as expected' {
+            { Assert-BicepCliVersionInPath -RequiredBicepVersion '0.40.0' } | Should -Throw "Unexpected Bicep version found. Expected '0.40.0', found '0.38.33'"
+            
+            Should -Invoke _getAzBicepVersion -Times 2
+            Should -Invoke _installAzBicep -Times 1
+            Should -Not -Invoke Set-Item
         }
     }
     
