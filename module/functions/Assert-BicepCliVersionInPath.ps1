@@ -29,11 +29,12 @@ function Assert-BicepCliVersionInPath
     function _getAzBicepVersion {
         [CmdletBinding()]
         param ()
-        & az bicep --version
+        & az bicep version
     }
     function _installAzBicep {
         [CmdletBinding()]
         param (
+            [Parameter(Mandatory)]
             [string] $Version
         )
         $PSNativeCommandUseErrorActionPreference = $true
@@ -63,6 +64,7 @@ function Assert-BicepCliVersionInPath
     # Check to see whether we should be using the latest version available
     $latestBicepVersion = (Invoke-RestMethod -Uri https://aka.ms/BicepLatestRelease | Select-Object -ExpandProperty tag_name).TrimStart('v')
     if ($RequiredBicepVersion -eq 'latest') {
+        Write-Verbose "Bicep CLI latest version: $latestBicepVersion"
         $RequiredBicepVersion = $latestBicepVersion
     }
     
