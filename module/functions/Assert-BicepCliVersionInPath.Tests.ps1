@@ -18,6 +18,8 @@ BeforeAll {
     Mock Write-Host {}
     Mock Set-Item {}
     Mock _installAzBicep {}
+
+    Set-StrictMode -Version Latest
 }
 
 Describe 'Assert-BicepCliVersionInPath' {
