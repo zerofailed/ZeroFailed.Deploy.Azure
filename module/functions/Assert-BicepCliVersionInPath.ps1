@@ -34,8 +34,15 @@ function Assert-BicepCliVersionInPath
             [switch] $Before,
             [switch] $After
         )
-        $toolOutput = & az bicep version
-        return (_extractBicepVersionFromOutput -VersionMessage "$toolOutput")
+        $PSNativeCommandUseErrorActionPreference = $true
+        try {
+            $toolOutput = & az bicep version
+            return (_extractBicepVersionFromOutput -VersionMessage "$toolOutput")
+        }
+        catch {
+            # Not installed
+            return $null
+        }
     }
     function _installAzBicep {
         [CmdletBinding()]
@@ -59,7 +66,7 @@ function Assert-BicepCliVersionInPath
             return $matches[1]
         }
         else {
-            throw "Unable to parse Bicep CLI version: $Version"
+            throw "Unable to parse Bicep CLI version: $VersionMessage"
         }
     }
 
@@ -67,17 +74,25 @@ function Assert-BicepCliVersionInPath
 
     # Az.PowerShell expects to find the Bicep CLI via the PATH environment variable
     $existingBicepCommand = Get-Command bicep -ErrorAction Ignore
+
+    $existingBicepCommandVersion = $null
     if ($existingBicepCommand) {
         # Check the version currently installed
         if ($IsWindows) {
             $existingBicepCommandVersion = "{0}.{1}.{2}" -f $existingBicepCommand.Version.Major,
-                                                            $existingBicepCommand.Version.Minor,
-                                                            $existingBicepCommand.Version.Build
+            $existingBicepCommand.Version.Minor,
+            $existingBicepCommand.Version.Build
         }
         else {
             $existingBicepCommandVersion = _getBicepVersion
         }
-        Write-Host "Existing installation of Bicep is v$existingBicepCommandVersion"
+
+        if ($existingBicepCommandVersion) {
+            Write-Host "Existing installation of Bicep is v$existingBicepCommandVersion"
+        }
+        else {
+            Write-Host "Existing Bicep version is unexpectedly unknown!"
+        }
     }
     
     # Check to see whether we should be using the latest version available
