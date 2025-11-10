@@ -8,16 +8,13 @@ function Assert-BicepCliVersionInPath
     [OutputType([System.Void])]
     param (
         # '' means any version
-        # 'latest' mean the latest version
+        # 'latest' means the latest version
         # '0.38.33' means the specific version
         [Parameter(ParameterSetName='requiredVersion')]
         [string] $RequiredBicepVersion = '',
 
         [Parameter(Mandatory, ParameterSetName='minimumVersion')]
-        [string] $MinimumBicepVersion,
-
-        [Parameter()]
-        [bool] $AllowInstallOrUpgrade = $true
+        [string] $MinimumBicepVersion
     )
 
     # Setup wrapper functions to ease mocking of az-cli

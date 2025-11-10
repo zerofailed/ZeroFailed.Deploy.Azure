@@ -77,7 +77,7 @@ Describe 'Assert-BicepCliVersionInPath' {
                 }
             }
             else {
-                # Under Linux, 'Get-Command' cannot derive the version from the exeutable
+                # Under Linux, 'Get-Command' cannot derive the version from the executable
                 $mockCommand = [PSCustomObject]@{
                     Version = [System.Version]::new(0, 0, 0)
                     Path = '/usr/local/bin/bicep'
