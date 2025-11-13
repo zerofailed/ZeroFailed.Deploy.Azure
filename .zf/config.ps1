@@ -13,6 +13,7 @@ $zerofailedExtensions = @(
 # Set the required build options
 $PesterTestsDir = "$here/module"
 $PesterCodeCoveragePaths = @("$PesterTestsDir/functions")
+$PesterExcludeTagFilter = 'Integration'
 $PowerShellModulesToPublish = @(
     @{
         ModulePath = "$here/module/ZeroFailed.Deploy.Azure.psd1"
