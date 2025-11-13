@@ -21,7 +21,7 @@ function Assert-TemporaryNetworkAccessRules {
             continue
         }
         
-        Set-CorvusTemporaryAzureResourceNetworkAccess `
+        Set-TemporaryAzureResourceNetworkAccess `
             -ResourceType $requiredResource.ResourceType `
             -ResourceGroupName $requiredResource.ResourceGroupName `
             -ResourceName $requiredResource.Name `
