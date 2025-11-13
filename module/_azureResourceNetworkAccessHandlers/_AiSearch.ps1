@@ -106,7 +106,7 @@ function _addTempRule_AiSearch {
     if ($script:currentPublicIpAddress -notin $currentAllowedIPs) {
         # Ensure that the AI Search service is in a state where it can accept firewall changes
         _waitForRule_AiSearch
-        
+
         $updatedAllowedIPs = $currentAllowedIPs + $script:currentPublicIpAddress
         
         $payload = @{
@@ -135,7 +135,7 @@ function _waitForRule_AiSearch {
     [CmdletBinding()]
     param ()
     
-    Write-Host "Waiting for AI Search to complete processing changes..."
+    Write-Host "Waiting for AI Search to complete configuration changes..."
     do {
        Start-Sleep -Seconds 10
     }
