@@ -27,6 +27,7 @@ When writing a new handler, you must consider the following requirements:
 
 For further details, please refer to the existing handler implementations and their associated integration tests:
 
+* [Azure AI Search](./_AiSearch.ps1) (main web site)
 * [Azure App Service](./_WebApp.ps1) (main web site)
 * [Azure App Service](./_WebAppScm.ps1) (SCM site)
 * [Azure SQL](./_SqlServer.ps1)

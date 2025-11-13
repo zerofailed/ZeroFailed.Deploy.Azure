@@ -7,7 +7,7 @@ function Set-TemporaryAzureResourceNetworkAccess {
     [OutputType([System.Void])]
     param (
         [Parameter(Mandatory=$true)]
-        [ValidateSet("KeyVault","SqlServer","StorageAccount","WebApp","WebAppScm")]
+        [ValidateSet("AiSearch","KeyVault","SqlServer","StorageAccount","WebApp","WebAppScm")]
         [string] $ResourceType,
 
         [Parameter(Mandatory=$true)]

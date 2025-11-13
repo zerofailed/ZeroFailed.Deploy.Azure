@@ -237,4 +237,78 @@ Describe "Set-TemporaryAzureResourceNetworkAccess Integration Tests" -Tag Integr
                 Should -Throw "*Operation returned an invalid status code 'Forbidden'*"
         }
     }
+
+    Describe "Azure AI Search" {
+        BeforeAll {
+            # Create search instance
+            $searchParams = @{
+                ResourceGroupName = $rg
+                Name = $suffix
+                Sku = "Basic"
+                SemanticSearchMode = "Free"
+                PublicNetworkAccess = "Enabled"
+                IPRuleList = @(@{value='1.1.1.1'})
+                AuthOption = "AadOrApiKey"
+                Bypass = "None"
+                Location = $location
+            }
+            $searchService = Get-AzSearchService -ResourceGroupName $searchParams.ResourceGroupName -Name $searchParams.Name
+            if (!$searchService) {
+                Write-Host "Creating Search service - this will take a few minutes..."
+                $searchService = New-AzSearchService @searchParams
+                # Ensure the test has the necessary data-plane permissions
+                New-AzRoleAssignment -Scope $searchService.Id -RoleDefinitionName "Search Index Data Contributor" -ObjectId $currentUser.Id -ErrorAction Ignore
+            }
+            elseif ($searchService.PublicNetworkAccess -ne 'SecuredByPerimeter' -or $searchService.NetworkRuleSet.Bypass -ne 'AzureServices') {
+                # Ensure an existing Search service is in the correct initial state
+                Write-Host "Resetting firewall rules..."
+                $payload = @{
+                    properties = @{
+                        publicNetworkAccess = $searchParams.PublicNetworkAccess
+                        networkRuleSet = @{
+                            # We need at least one IP rule to lockdown the instance
+                            ipRules = $searchParams.IPRuleList
+                            bypass = $searchParams.Bypass
+                        }
+                    }
+                }
+                $resp = Invoke-AzRestMethod -Method PATCH -Uri "https://management.azure.com$($searchService.Id)?api-version=2025-05-01" -Payload ($payload | ConvertTo-Json -Depth 10)
+                if ($resp.StatusCode -ge 400) {
+                    throw $_.Exception.Message
+                }
+            }
+
+            # Wait for changes to finish applying
+            do {
+                Start-Sleep -Seconds 10
+            }
+            until ((Get-AzSearchService -ResourceGroupName $rg -Name $suffix).Status -eq 'Running')
+            
+            $searchEndpoint = "https://$($searchService.Name).search.windows.net"
+        }
+
+        It "should not have permissions before enabling temporary network access" {
+            $resp = Invoke-AzRestMethod -Uri "$($searchEndpoint)/indexes?api-version=2025-09-01" -ResourceId https://search.azure.com
+            $resp.StatusCode | Should -Be 403
+        }
+        
+        It "should connect successfully after waiting for the temporary network access" {
+            Set-TemporaryAzureResourceNetworkAccess -ResourceType AiSearch -ResourceGroupName $rg -ResourceName $suffix -Wait
+
+            $resp = Invoke-AzRestMethod -Uri "$($searchEndpoint)/indexes?api-version=2025-09-01" -ResourceId https://search.azure.com
+            $resp.StatusCode | Should -Be 200
+
+            $res = $resp.Content |
+                    ConvertFrom-Json |
+                    Select-Object -ExpandProperty value
+            $res | Should -Be @()
+        }
+        
+        It "should not have permissions after using the 'Revoke' flag" {
+            Set-TemporaryAzureResourceNetworkAccess -ResourceType AiSearch -ResourceGroupName $rg -ResourceName $suffix -Revoke -Wait
+
+            $resp = Invoke-AzRestMethod -Uri "$($searchEndpoint)/indexes?api-version=2025-09-01" -ResourceId https://search.azure.com
+            $resp.StatusCode | Should -Be 403
+        }
+    }
 }
