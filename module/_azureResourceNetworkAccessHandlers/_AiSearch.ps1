@@ -38,6 +38,9 @@ function _removeExistingTempRules_AiSearch {
                         -Name $ResourceName
 
     if ($searchService.NetworkRuleSet -and $searchService.NetworkRuleSet.IpRules) {
+        # Ensure that the AI Search service is in a state where it can accept firewall changes
+        _waitForRule_AiSearch
+
         # AI Search stores IP addresses without CIDR notation for single IPs
         $currentAllowedIPs = $searchService.NetworkRuleSet.IpRules | ForEach-Object { $_.Value }
 
@@ -101,6 +104,9 @@ function _addTempRule_AiSearch {
 
     # Add our IP if it's not already present
     if ($script:currentPublicIpAddress -notin $currentAllowedIPs) {
+        # Ensure that the AI Search service is in a state where it can accept firewall changes
+        _waitForRule_AiSearch
+        
         $updatedAllowedIPs = $currentAllowedIPs + $script:currentPublicIpAddress
         
         $payload = @{
@@ -129,7 +135,7 @@ function _waitForRule_AiSearch {
     [CmdletBinding()]
     param ()
     
-    Write-Host "Waiting for AI Search rule changes to take effect..."
+    Write-Host "Waiting for AI Search to complete processing changes..."
     do {
        Start-Sleep -Seconds 10
     }
