@@ -5,7 +5,7 @@
 BeforeDiscovery {
     # Find all the handler implementations
     $here = Split-Path -Parent $PSCommandPath
-    $handlers = Get-ChildItem -Path (Join-Path (Split-Path -Parent $PSCommandPath) '..' '_azureResourceNetworkAccessHandlers') -Filter '*.ps1'
+    $handlers = Get-ChildItem -Path (Join-Path (Split-Path -Parent $PSCommandPath) '..' '_azureResourceNetworkAccessHandlers') -Filter '_*.ps1'
 }
 
 Describe "Handler Validation Tests" {

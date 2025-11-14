@@ -1,314 +1,140 @@
-# <copyright file="Set-TemporaryAzureResourceNetworkAccess.Tests.ps1" company="Endjin Limited">
+# <copyright file="Set-TemporaryAzureResourceNetworkAccess.Handlers.Tests.ps1" company="Endjin Limited">
 # Copyright (c) Endjin Limited. All rights reserved.
 # </copyright>
 
-BeforeAll {
-    # sut
-    . $PSCommandPath.Replace('.Tests.ps1','.ps1')
+BeforeDiscovery {
+    # Find all the handler implementations
+    $here = Split-Path -Parent $PSCommandPath
+    $handlers = Get-ChildItem -Path (Join-Path (Split-Path -Parent $PSCommandPath) '..' '_azureResourceNetworkAccessHandlers') -Filter '_*.ps1'
 }
 
-Describe "Set-TemporaryAzureResourceNetworkAccess Integration Tests" -Tag Integration {
-    BeforeAll {
-        $currentUser = Get-AzADUser -SignedIn
-        # Generate stable user-specific naming conventions that will work for users and service principals
-        $suffix = ($currentUser.Id -replace "-","").SubString(0,20)
-        $rg = "pester-tempnetaccess-$($currentUser.Id)"
-        $location = "uksouth"
+BeforeAll {
+    . $PSCommandPath.Replace('.Tests.ps1', '.ps1')
 
-        New-AzResourceGroup -ResourceGroupName $rg -Location $location -Tag @{Environment = "Pester"} -Force
-    }
+    # Used to enable mocking the handlers which are dynamically loaded
+    $IsRunningInPester = $true
 
-    AfterAll {
-        Write-Host "`n`nCleaning-up Azure test resources..."
-        Remove-AzResourceGroup -ResourceGroupName $rg -Force
-        Remove-AzKeyVault -VaultName $suffix -Location $location -InRemovedState -Force
-    }
+    Mock Write-Host {}
+    Mock Invoke-RestMethod { '1.1.1.1' }
+}
 
-    Describe "Azure Storage Account" {
+AfterAll {
+    Remove-Item variable:/IsRunningInPester
+}
+
+Describe "Set-TemporaryAzureResourceNetworkAccess Tests" {
+
+    Context "Test handler <_>" -ForEach $handlers {
+
         BeforeAll {
-            # Create storage account
-            $saParams = @{
-                ResourceGroupName = $rg
-                Name = $suffix
-                Tag = @{Environment = "Pester"}
-                Kind = "StorageV2"
-                Sku = "Standard_LRS"
-                AccessTier = "Hot"
-                Location = $location
-                MinimumTlsVersion = "TLS1_2"
-                EnableHttpsTrafficOnly = $true
-            }
-            New-AzStorageAccount @saParams -ErrorAction Ignore | Out-Null
-            $sa = Get-AzStorageAccount -ResourceGroupName $saParams.ResourceGroupName -Name $saParams.Name
-            
-            # Ensure the test has the necessary data-plane permissions
-            New-AzRoleAssignment -Scope $sa.Id -RoleDefinitionName "Storage Blob Data Contributor" -ObjectId $currentUser.Id -ErrorAction Ignore
-            
-            # Lockdown access to the storage account
-            $sa | Update-AzStorageAccountNetworkRuleSet -DefaultAction Deny -Bypass None
+            $handlerName = (Split-Path -LeafBase $_.FullName).TrimStart("_")
 
-            # Pause to ensure the change has taken effect
-            Write-Host "Waiting for storage firewall to update..."
-            Start-Sleep -Seconds 30
+            # Make private handler functions available for mocking
+            New-Item function:/_addTempRule_$handlerName -Value {}
+            New-Item function:/_removeExistingTempRules_$handlerName -Value {}
+            New-Item function:/_waitForRule_$handlerName -Value {}
+
+            Mock _addTempRule_$handlerName {}
+            Mock _removeExistingTempRules_$handlerName {}
+            Mock _waitForRule_$handlerName {}
         }
 
-        It "should not have permissions before enabling temporary network access" {
-            { Get-AzStorageBlob -Container "foo" -Blob "foo/bar.txt" -Context $sa.Context -ErrorAction Stop } |
-                Should -Throw "*This request is not authorized to perform this operation*"
+        AfterAll {
+            Remove-Item function:/_addTempRule_$handlerName
+            Remove-Item function:/_removeExistingTempRules_$handlerName
+            Remove-Item function:/_waitForRule_$handlerName
         }
         
-        It "should not be able to connect immediately when not waiting for the temporary network access" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType StorageAccount -ResourceGroupName $rg -ResourceName $suffix
-
-            { Get-AzStorageBlob -Container "foo" -Blob "foo/bar.txt" -Context $sa.Context -ErrorAction Stop } |
-                Should -Throw "*This request is not authorized to perform this operation*"
-        }
-
-        It "should connect successfully after waiting for the temporary network access" {
-            Start-Sleep -Seconds 30
-            
-            { Get-AzStorageBlob -Container "foo" -Blob "foo/bar.txt" -Context $sa.Context -ErrorAction Stop } |
-                Should -Throw "*Can not find blob 'foo/bar.txt' in container 'foo', or the blob type is unsupported*"
-        }
-        
-        It "should not have permissions after using the 'Revoke' flag" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType StorageAccount -ResourceGroupName $rg -ResourceName $suffix -Revoke -Wait
-
-            { Get-AzStorageBlob -Container "foo" -Blob "foo/bar.txt" -Context $sa.Context -ErrorAction Stop } |
-                Should -Throw "*This request is not authorized to perform this operation*"
-        }
-    }
-
-    Describe "Azure SQL Server" {
-        BeforeAll {
-            # Create SQL server
-            $sqlParams = @{
-                ResourceGroupName = $rg
-                ServerName = $suffix
-                Tags = @{Environment = "Pester"}
-                EnableActiveDirectoryOnlyAuthentication = $true
-                ExternalAdminName = $currentUser.UserPrincipalName
-                MinimalTlsVersion = "1.2"
-                Location = $location
-            }
-            New-AzSqlServer @sqlParams -ErrorAction Ignore | Out-Null
-            $server = Get-AzSqlServer -ResourceGroupName $sqlParams.ResourceGroupName -ServerName $sqlParams.ServerName
-    
-            # Prepare the test SQL query
-            $sqlCmd = {
-                $token = (Get-AzAccessToken -ResourceUrl "https://database.windows.net" -AsSecureString).Token
-                Invoke-Sqlcmd `
-                    -Query "select * from sys.tables" `
-                    -ServerInstance "$suffix.database.windows.net" `
-                    -Database master `
-                    -AccessToken ($token | ConvertFrom-SecureString -AsPlainText) `
-                    -AbortOnError `
-                    -ErrorAction Stop
-            }
-        }
-    
-        It "should not have permissions before enabling temporary network access" {
-            { $sqlCmd.Invoke() } | Should -Throw
-        }
-       
-        It "should connect successfully after enabling temporary network access" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType SqlServer -ResourceGroupName $rg -ResourceName $suffix -Wait
-    
-            $res = $sqlCmd.Invoke()
-            $res | Should -Not -BeNullOrEmpty
-        }
-       
-        It "should not have permissions after using the 'Revoke' flag" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType SqlServer -ResourceGroupName $rg -ResourceName $suffix -Revoke -Wait
-    
-            $currentIp = (Invoke-RestMethod https://ifconfig.io).Trim()
-            Get-AzSqlServerFirewallRule -ResourceGroupName $rg -ServerName $suffix |
-                Where-Object { $_.StartIpAddress -eq $currentIp } |
-                Should -Be $null
-        }
-    }
-
-    Describe "Azure Web App" {
-        BeforeAll {
-            # Create the App Service
-            $aspParams = @{
-                ResourceGroupName = $rg
-                ResourceType = "microsoft.web/serverfarms"
-                ResourceName = $suffix
-                Sku = @{
-                    name = "B1"
-                    tier = "Basic"
-                    family = "B"
-                    capacity = "1"
-                }
-                Kind = "Linux"
-                Properties = @{ Reserved = $true }
-                Location = $location
-                Force = $true
-            }
-            New-AzResource @aspParams -ErrorAction Ignore | Out-Null
-            $asp = Get-AzAppServicePlan -ResourceGroupName $aspParams.ResourceGroupName -Name $aspParams.ResourceName
-
-            $webParams = @{
-                ResourceGroupName = $rg                
-                Name = $suffix
-                AppServicePlan = $aspParams.ResourceName
-                ContainerImageName = "nginx:latest"
-                EnableContainerContinuousDeployment = $false
-                Location = $location
-            }
-            New-AzWebApp @webParams -ErrorAction Ignore | Out-Null
-            # Workaround: https://github.com/Azure/azure-powershell/issues/10645
-            $config = Get-AzResource -ResourceGroupName $rg -ResourceType "Microsoft.Web/sites/config" -ResourceName $suffix -ApiVersion 2018-02-01
-            $config.Properties.linuxFxVersion = "DOCKER|nginx:latest"
-            $config | Set-AzResource -ApiVersion 2018-02-01 -Force | Out-Null
-            $web = Get-AzWebApp -ResourceGroupName $webParams.ResourceGroupName -Name $webParams.Name
-
-            # Lockdown web site
-            $config.Properties.ipSecurityRestrictionsDefaultAction = "Deny"
-            $config.Properties.scmIpSecurityRestrictionsUseMain = $true
-            $config | Set-AzResource -ApiVersion 2018-02-01 -Force | Out-Null
-        }
-
-        It "should not have permissions before enabling temporary network access" {
-            $resp = Invoke-WebRequest -uri https://$($web.DefaultHostName) -SkipHttpErrorCheck
-            $resp.StatusCode | Should -Be 403
-        }
-        
-        It "should connect successfully after enabling temporary network access" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType WebApp -ResourceGroupName $rg -ResourceName $suffix -Wait
-            
-            # Pause to ensure the change has taken effect
-            Start-Sleep -Seconds 5
-
-            $resp = Invoke-WebRequest -uri https://$($web.DefaultHostName)
-            $resp.StatusCode | Should -Be 200
-        }
-        
-        It "should not have permissions after using the 'Revoke' flag" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType WebApp -ResourceGroupName $rg -ResourceName $suffix -Revoke -Wait
-
-            $resp = Invoke-WebRequest -uri https://$($web.DefaultHostName) -SkipHttpErrorCheck
-            $resp.StatusCode | Should -Be 403
-        }
-    }
-
-    Describe "Azure Key Vault" {
-        BeforeAll {
-            # Create key vault
-            $kvParams = @{
-                ResourceGroupName = $rg
-                Name = $suffix
-                Sku = "Standard"
-                Tag = @{Environment = "Pester"}
-                Location = $location
-                EnablePurgeProtection = $false
-            }
-            New-AzKeyVault @kvParams -ErrorAction Ignore | Out-Null
-            $kv = Get-AzKeyVault -ResourceGroupName $kvParams.ResourceGroupName -Name $kvParams.Name
-            
-            # Ensure the test has the necessary data-plane permissions
-            New-AzRoleAssignment -Scope $kv.ResourceId -RoleDefinitionName "Key Vault Secrets Officer" -ObjectId $currentUser.Id -ErrorAction Ignore
-            
-            # Lockdown access to the storage account
-            $kv | Update-AzKeyVaultNetworkRuleSet -DefaultAction Deny -Bypass None
-
-            # Pause to ensure the change has taken effect
-            Write-Host "Waiting for key vault firewall to update..."
-            Start-Sleep -Seconds 10
-        }
-
-        It "should not have permissions before enabling temporary network access" {
-            { Get-AzKeyVaultSecret -VaultName $suffix -SecretName "foo" -ErrorAction Stop } |
-                Should -Throw "*Operation returned an invalid status code 'Forbidden'*"
-        }
-        
-        It "should connect successfully after waiting for the temporary network access" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType KeyVault -ResourceGroupName $rg -ResourceName $suffix
-            Start-Sleep -Seconds 5
-            Get-AzKeyVaultSecret -VaultName $suffix -SecretName "foo" -ErrorAction Stop |
-                Should -Be $null
-        }
-        
-        It "should not have permissions after using the 'Revoke' flag" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType KeyVault -ResourceGroupName $rg -ResourceName $suffix -Revoke -Wait
-
-            { Get-AzKeyVaultSecret -VaultName $suffix -SecretName "foo" -ErrorAction Stop } |
-                Should -Throw "*Operation returned an invalid status code 'Forbidden'*"
-        }
-    }
-
-    Describe "Azure AI Search" {
-        BeforeAll {
-            # Create search instance
-            $searchParams = @{
-                ResourceGroupName = $rg
-                Name = $suffix
-                Sku = "Basic"
-                SemanticSearchMode = "Free"
-                PublicNetworkAccess = "Enabled"
-                IPRuleList = @(@{value='1.1.1.1'})
-                AuthOption = "AadOrApiKey"
-                Bypass = "None"
-                Location = $location
-            }
-            $searchService = Get-AzSearchService -ResourceGroupName $searchParams.ResourceGroupName -Name $searchParams.Name
-            if (!$searchService) {
-                Write-Host "Creating Search service - this will take a few minutes..."
-                $searchService = New-AzSearchService @searchParams
-                # Ensure the test has the necessary data-plane permissions
-                New-AzRoleAssignment -Scope $searchService.Id -RoleDefinitionName "Search Index Data Contributor" -ObjectId $currentUser.Id -ErrorAction Ignore
-            }
-            elseif ($searchService.PublicNetworkAccess -ne 'SecuredByPerimeter' -or $searchService.NetworkRuleSet.Bypass -ne 'AzureServices') {
-                # Ensure an existing Search service is in the correct initial state
-                Write-Host "Resetting firewall rules..."
-                $payload = @{
-                    properties = @{
-                        publicNetworkAccess = $searchParams.PublicNetworkAccess
-                        networkRuleSet = @{
-                            # We need at least one IP rule to lockdown the instance
-                            ipRules = $searchParams.IPRuleList
-                            bypass = $searchParams.Bypass
-                        }
-                    }
-                }
-                $resp = Invoke-AzRestMethod -Method PATCH -Uri "https://management.azure.com$($searchService.Id)?api-version=2025-05-01" -Payload ($payload | ConvertTo-Json -Depth 10)
-                if ($resp.StatusCode -ge 400) {
-                    throw $_.Exception.Message
+        Context "When adding a temporary firewall rule without waiting" {
+            BeforeAll {
+                $splat = @{
+                    ResourceType = $handlerName
+                    ResourceGroupName = 'mock-rg'
+                    ResourceName = 'mock-resource'
                 }
             }
-
-            # Wait for changes to finish applying
-            do {
-                Start-Sleep -Seconds 10
+            It "should remove any existing temporary firewall rules" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _removeExistingTempRules_$handlerName -Times 1
             }
-            until ((Get-AzSearchService -ResourceGroupName $rg -Name $suffix).Status -eq 'Running')
-            
-            $searchEndpoint = "https://$($searchService.Name).search.windows.net"
+            It "should add a temporary firewall rule" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _addTempRule_$handlerName -Times 1
+            }
+            It "should not wait for the firewall change to complete" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Not -Invoke _waitForRule_$handlerName
+            }
         }
 
-        It "should not have permissions before enabling temporary network access" {
-            $resp = Invoke-AzRestMethod -Uri "$($searchEndpoint)/indexes?api-version=2025-09-01" -ResourceId https://search.azure.com
-            $resp.StatusCode | Should -Be 403
+        Context "When adding a temporary firewall rule and waiting for completion" {
+            BeforeAll {
+                $splat = @{
+                    ResourceType = $handlerName
+                    ResourceGroupName = 'mock-rg'
+                    ResourceName = 'mock-resource'
+                    Wait = $true
+                }
+            }
+            It "should remove any existing temporary firewall rules" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _removeExistingTempRules_$handlerName -Times 1
+            }
+            It "should add a temporary firewall rule" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _addTempRule_$handlerName -Times 1
+            }
+            It "should wait for the firewall change to complete" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _waitForRule_$handlerName -Times 1
+            }
         }
-        
-        It "should connect successfully after waiting for the temporary network access" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType AiSearch -ResourceGroupName $rg -ResourceName $suffix -Wait
 
-            $resp = Invoke-AzRestMethod -Uri "$($searchEndpoint)/indexes?api-version=2025-09-01" -ResourceId https://search.azure.com
-            $resp.StatusCode | Should -Be 200
-
-            $res = $resp.Content |
-                    ConvertFrom-Json |
-                    Select-Object -ExpandProperty value
-            $res | Should -Be @()
+        Context "When revoking a temporary firewall rule without waiting" {
+            BeforeAll {
+                $splat = @{
+                    ResourceType = $handlerName
+                    ResourceGroupName = 'mock-rg'
+                    ResourceName = 'mock-resource'
+                    Revoke = $true
+                }
+            }
+            It "should remove any existing temporary firewall rules" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _removeExistingTempRules_$handlerName -Times 1
+            }
+            It "should not add a temporary firewall rule" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Not -Invoke _addTempRule_$handlerName
+            }
+            It "should not wait for the firewall change to complete" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Not -Invoke _waitForRule_$handlerName
+            }
         }
-        
-        It "should not have permissions after using the 'Revoke' flag" {
-            Set-TemporaryAzureResourceNetworkAccess -ResourceType AiSearch -ResourceGroupName $rg -ResourceName $suffix -Revoke -Wait
 
-            $resp = Invoke-AzRestMethod -Uri "$($searchEndpoint)/indexes?api-version=2025-09-01" -ResourceId https://search.azure.com
-            $resp.StatusCode | Should -Be 403
+        Context "When revoking a temporary firewall rule and waiting for completion" {
+            BeforeAll {
+                $splat = @{
+                    ResourceType = $handlerName
+                    ResourceGroupName = 'mock-rg'
+                    ResourceName = 'mock-resource'
+                    Revoke = $true
+                    Wait = $true
+                }
+            }
+            It "should remove any existing temporary firewall rules" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _removeExistingTempRules_$handlerName -Times 1
+            }
+            It "should not add a temporary firewall rule" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Not -Invoke _addTempRule_$handlerName
+            }
+            It "should wait for the firewall change to complete" {
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                Should -Invoke _waitForRule_$handlerName -Times 1
+            }
         }
     }
 }

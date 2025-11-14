@@ -36,8 +36,10 @@ function Set-TemporaryAzureResourceNetworkAccess {
         ResourceName = $ResourceName
     }
 
-    # Load the handler
-    . (Join-Path (Split-Path -Parent $PSCommandPath) '../_azureResourceNetworkAccessHandlers' "_$ResourceType.ps1")
+    # Load the handler, but not if running in Pester scenarios that need to mock them
+    if (!(Test-Path variable:/IsRunningInPester) -and !$IsRunningInPester) {
+        . (Join-Path (Split-Path -Parent $PSCommandPath) '../_azureResourceNetworkAccessHandlers' "_$ResourceType.ps1")
+    }
 
     $logSuffix = "[ResourceType=$ResourceType][ResourceGroupName=$ResourceGroupName][ResourceName=$ResourceName]"
 
