@@ -5,11 +5,11 @@
 BeforeAll {
     . $PSCommandPath.Replace('.Tests.ps1', '.ps1')
     
+    Import-Module Az.KeyVault
+
     # Mock external dependencies
     Mock Import-Module {}
-    
-    Import-Module Az.KeyVault
-    Mock Get-AzKeyVaultSecret {
+    Mock Get-AzKeyVaultSecret -ModuleName Az.KeyVault {
         # Return a mock SecureString
         ConvertTo-SecureString -String "mock-secret-value" -AsPlainText -Force
     }
