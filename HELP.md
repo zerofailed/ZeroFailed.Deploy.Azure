@@ -140,6 +140,8 @@ Supported resource types are:
 - WebApp
 - WebAppScm
 
+***NOTE**: More information about developing additional handlers is available [here](./module/_azureResourceNetworkAccessHandlers/README.md).*
+
 
 ### Tasks
 
