@@ -7,7 +7,7 @@ BeforeAll {
     
     # Mock external dependencies
     # Import-Module Az.KeyVault
-    Mock Get-AzKeyVaultSecret -ModuleName Az.KeyVault {
+    Mock Get-AzKeyVaultSecret { #-ModuleName Az.KeyVault {
         # Return a mock SecureString
         ConvertTo-SecureString -String "mock-secret-value" -AsPlainText -Force
     }
