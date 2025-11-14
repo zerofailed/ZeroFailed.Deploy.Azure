@@ -2,21 +2,21 @@
 
 The [`Set-TemporaryAzureResourceNetworkAccess`](../functions/Set-TemporaryAzureResourceNetworkAccess.ps1) function streamlines the process of configuring network access rules that are sometimes briefly required during the execution of a CI/CD pipeline that needs to interact with Azure resources with restricted access from the public Internet.
 
-The precise steps required for this functionality is specific Azure resource.  For this reason a pluggable 'handler' approach has been implemented so that the range of supported Azure resources can be more easily extended.
+The precise steps required for this functionality is specific to each Azure resource.  For this reason a pluggable 'handler' approach has been implemented so that the range of supported Azure resources can be more easily extended.
 
 This directory contains those 'handler' implementations.
 
 When writing a new handler, you must consider the following requirements:
 
-* Filename must begin with a `_` prefix, to ensure the function are private to the module (i.e. not exported)
+* Filename must begin with a `_` prefix, to ensure the functions are private to the module (i.e. not exported)
 * Remainder of the filename must match how the resource type will be referenced via the `ResourceType` parameter of `Set-TemporaryAzureResourceNetworkAccess` (e.g. `_MyNewResourceType.ps1`)
-* Each handler script must implement the following 2 [advanced functions](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_functions_advanced):
+* Each handler script must implement the following 3 [advanced functions](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_functions_advanced):
     * `_addTempRule_<handler-name>`
         * This must be able to update the specified resource to grant network access to a specified IP address (see below)
     * `_removeExistingTempRules_<handler-name>`
-        * This must be able to find and remove/revert any changes made by the above function
+        * This must be able to find and remove/revert any changes made by the above function, using either the rule name (if supported) or the current public IP address
     * `_waitForRule_<handler-name>`
-        * This implements waiting for an update to take effect, typically a simple delay, based on the target resource type
+        * This implements waiting for an update to take effect, typically a simple delay or querying the resource in some way, based on the target resource type
 * The above functions must accept the following string parameters:
     * `ResourceGroupName`
     * `ResourceName`
@@ -27,11 +27,11 @@ When writing a new handler, you must consider the following requirements:
 
 For further details, please refer to the existing handler implementations and their associated integration tests:
 
-* [Azure AI Search](./_AiSearch.ps1) (main web site)
+* [Azure AI Search](./_AiSearch.ps1)
 * [Azure App Service](./_WebApp.ps1) (main web site)
 * [Azure App Service](./_WebAppScm.ps1) (SCM site)
 * [Azure SQL](./_SqlServer.ps1)
 * [Azure Storage](./_StorageAccount.ps1)
-* [Integration Test Suite](../functions/Set-TemporaryAzureResourceNetworkAccess.Tests.ps1)
+* [Integration Test Suite](./Handler.Integration.Tests.ps1)
 
 ***NOTE**: Currently, the test suite is centralised as this reduces the time associated with Azure resource setup and clear-down.*
