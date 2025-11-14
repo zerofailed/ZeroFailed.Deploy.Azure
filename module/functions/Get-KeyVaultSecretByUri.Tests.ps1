@@ -88,6 +88,7 @@ Describe 'Get-KeyVaultSecretByUri' {
                     Version = [Version]'6.2.9'
                 }
             }
+            Mock Write-Verbose {}
         }
         
         It 'should parse the URI and call Get-AzKeyVaultSecret with vaultName and secretName for version 6.2.9' {
@@ -136,17 +137,17 @@ Describe 'Get-KeyVaultSecretByUri' {
         It 'should write verbose message about parsing Secret URI' {
             $testUri = 'https://kvname.vault.azure.net/secrets/secretname'
             
-            $verboseOutput = Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose 4>&1
+            Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose
             
-            $verboseOutput | Where-Object { $_ -match 'Parsing Secret URI for older version' } | Should -Not -BeNullOrEmpty
+            Should -Invoke Write-Verbose -ParameterFilter { $Message -match 'Parsing Secret URI for older version' }
         }
         
         It 'should write verbose message with parsed arguments' {
             $testUri = 'https://kvname.vault.azure.net/secrets/secretname'
             
-            $verboseOutput = Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose 4>&1
+            Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose
             
-            $verboseOutput | Where-Object { $_ -match 'Args:.*vaultName.*secretName' } | Should -Not -BeNullOrEmpty
+            Should -Invoke Write-Verbose -ParameterFilter { $Message -match 'Args:.*vaultName.*secretName' }
         }
         
         It 'should return a SecureString' {
@@ -167,6 +168,7 @@ Describe 'Get-KeyVaultSecretByUri' {
                     Version = [Version]'6.2.9'
                 }
             }
+            Mock Write-Verbose {}
         }
         
         It 'should parse the URI and call Get-AzKeyVaultSecret with vaultName, secretName, and secretVersion' {
@@ -196,17 +198,17 @@ Describe 'Get-KeyVaultSecretByUri' {
         It 'should write verbose message about parsing Secret URI' {
             $testUri = 'https://kvname.vault.azure.net/secrets/secretname/version123'
             
-            $verboseOutput = Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose 4>&1
+            Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose
             
-            $verboseOutput | Where-Object { $_ -match 'Parsing Secret URI for older version' } | Should -Not -BeNullOrEmpty
+            Should -Invoke Write-Verbose -ParameterFilter { $Message -match 'Parsing Secret URI for older version' }
         }
         
         It 'should write verbose message with parsed arguments including version' {
             $testUri = 'https://kvname.vault.azure.net/secrets/secretname/version123'
             
-            $verboseOutput = Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose 4>&1
+            Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose
             
-            $verboseOutput | Where-Object { $_ -match 'Args:.*secretVersion' } | Should -Not -BeNullOrEmpty
+            Should -Invoke Write-Verbose -ParameterFilter { $Message -match 'Args:.*secretVersion' }
         }
         
         It 'should return a SecureString' {
