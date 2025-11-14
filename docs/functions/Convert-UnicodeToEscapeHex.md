@@ -4,7 +4,7 @@ external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
 Locale: en-GB
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 10/08/2025
+ms.date: 11/14/2025
 PlatyPS schema version: 2024-05-01
 title: Convert-UnicodeToEscapeHex
 ---
