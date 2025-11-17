@@ -13,7 +13,7 @@ function Get-KeyVaultSecretByUri {
     # Lookup the KV secret based on the available version of the module
     Import-Module Az.KeyVault
     if ((Get-Module Az.KeyVault | Select-Object -ExpandProperty Version) -ge [Version]'6.3.0') {
-        $secretValue = Get-AzKeyVaultSecret -SecretId $SecretUri
+        $secretValue = Get-AzKeyVaultSecret -Id $SecretUri
     }
     else {
         Write-Verbose 'Parsing Secret URI for older version of Az.KeyVault module...'

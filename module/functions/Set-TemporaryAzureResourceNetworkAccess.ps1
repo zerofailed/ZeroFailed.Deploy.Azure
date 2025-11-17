@@ -23,7 +23,7 @@ function Set-TemporaryAzureResourceNetworkAccess {
 
     # Set optional values used by some handler implementations
     $script:ruleName = "temp-cicd-rule"
-    $script:ruleDescription = "Temporary rule added by 'Enable-TemporaryAzureResourceAccess'"
+    $script:ruleDescription = "Temporary rule added by 'Set-TemporaryAzureResourceNetworkAccess'"
     $script:currentPublicIpAddress = (Invoke-RestMethod https://ifconfig.io).Trim()
     Write-Host "currentPublicIpAddress: $currentPublicIpAddress"
 
