@@ -32,6 +32,7 @@ kanban
         connectAzure[Init Azure connections]
         getDepId[Get current identity details]
     provision
+        ensureBicep[Ensure Bicep version]
         deployArm[Run ARM/Bicep deployments]
     deploy
         setFw[Set Temp PaaS firewall rules]

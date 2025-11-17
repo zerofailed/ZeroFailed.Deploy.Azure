@@ -8,6 +8,7 @@ This document provides a complete reference for all exported functions in the Ze
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Assert-TemporaryNetworkAccessRules](functions/Assert-TemporaryNetworkAccessRules.md) | Manages temporary firewall access rules for Azure resources.                                                                                |
 | [Convert-UnicodeToEscapeHex](functions/Convert-UnicodeToEscapeHex.md)                 | Converts Unicode characters in a JSON string to their escaped hexadecimal representation, useful when passing unicode strings to REST APIs. |
+| [Assert-BicepCliVersionInPath](functions/Assert-BicepCliVersionInPath.md)             | Checks that the specified version of the Bicep CLI is available via the PATH.                                                               |
 
 ---
 

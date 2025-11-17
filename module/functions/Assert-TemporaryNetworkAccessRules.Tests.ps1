@@ -8,6 +8,8 @@ BeforeAll {
 
     # Make external functions available for mocking
     function Set-CorvusTemporaryAzureResourceNetworkAccess {}
+
+    Set-StrictMode -Version Latest
 }
 
 Describe 'Assert-TemporaryNetworkAccessRules' {
