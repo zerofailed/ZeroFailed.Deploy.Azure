@@ -47,11 +47,15 @@ This group contains features for managing Azure Resource Manager deployments (us
 
 ### Properties
 
-| Name                      | Default Value | ENV Override                       | Description                                                                                                                                                                                         |
-| ------------------------- | ------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RequiredArmDeployments`  | @()           |                                    | Details the ARM deployments that need to be run for the deployment process. See [note below](#requiredarmdeployments) for configuration syntax.                                                     |
-| `SkipArmDeployments`      | $false        | `ZF_DEPLOY_SKIP_ARM_DEPLOYMENTS`   | When true, skips any configured ARM deployments.                                                                                                                                                    |
-| `ZF_ArmDeploymentOutputs` | @{}           | `ZF_DEPLOY_ARM_DEPLOYMENT_OUTPUTS` | A script-scoped variable containing the outputs from any ARM deployments that will be available to the rest of the deployment process. Available for overriding as part of niche testing scenarios. |
+| Name                      | Default Value | ENV Override                          | Description                                                                                                                                                                                         |
+| ------------------------- | ------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ForceBicepVersionCheck`  |               | `ZF_DEPLOY_FORCE_BICEP_VERSION_CHECK` | When true, the available Bicep CLI version will be checked, even if the ARM deployment does not reference a Bicep template.                                                                         |
+| `MinimumBicepVersion`     |               | `ZF_DEPLOY_MINIMUM_BICEP_VERSION`     | Specifies the minimum version of the Bicep CLI that should be available. If not found, the latest version will be installed.                                                                        |
+| `RequiredArmDeployments`  | @()           |                                       | Details the ARM deployments that need to be run for the deployment process. See [note below](#requiredarmdeployments) for configuration syntax.                                                     |
+| `RequiredBicepVersion`    |               | `ZF_DEPLOY_REQUIRED_BICEP_VERSION`    | Ensures a specific version of the Bicep CLI is available. If not found, the required version will be installed.                                                                        |
+| `SkipArmDeployments`      | $false        | `ZF_DEPLOY_SKIP_ARM_DEPLOYMENTS`      | When true, skips any configured ARM deployments.                                                                                                                                                    |
+| `SkipEnsureBicepVersion`  | $false        | `ZF_DEPLOY_SKIP_ENSURE_BICEP_VERSION` | When true, the available Bicep CLI version will not be validated, or installed if missing.                                                                                                                     |
+| `ZF_ArmDeploymentOutputs` | @{}           | `ZF_DEPLOY_ARM_DEPLOYMENT_OUTPUTS`    | A script-scoped variable containing the outputs from any ARM deployments that will be available to the rest of the deployment process. Available for overriding as part of niche testing scenarios. |
 
 #### RequiredArmDeployments
 
@@ -83,9 +87,10 @@ $RequiredArmDeployments = @(
 
 ### Tasks
 
-| Name                 | Description                         |
-| -------------------- | ----------------------------------- |
-| `deployArmTemplates` | Runs the specified ARM deployments. |
+| Name                 | Description                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `deployArmTemplates` | Runs the specified ARM deployments.                                                                                          |
+| `ensureBicepVersion` | Checks that a suitable version of Bicep CLI is available, installing it via Azure CLI when missing or the incorrect version. |
 
 ## Monitoring
 

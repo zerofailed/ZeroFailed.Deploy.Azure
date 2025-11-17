@@ -7,7 +7,7 @@
 # Synopsis: Runs the specified ARM deployments.
 task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDeployments -and $RequiredArmDeployments.Count -ge 1 } `
                         -After ProvisionCore `
-                        -Jobs readConfiguration,connectAzure,{
+                        -Jobs readConfiguration,connectAzure,ensureBicepVersion,{
     
     foreach ($armDeployment in $RequiredArmDeployments) {
 
@@ -99,4 +99,24 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
         }
     }
     Write-Build White "ARM Deployment Outputs: $($script:ZF_ArmDeploymentOutputs | ConvertTo-Json -Depth 10)"
+}
+
+# Synopsis: Checks that a suitable version of Bicep CLI is available, installing it via Azure CLI when missing.
+task ensureBicepVersion -If { !$SkipEnsureBicepVersion } {
+
+    $deploymentRequiresBicep = $RequiredArmDeployments | Where-Object { $_.templatePath.EndsWith('.bicep')}
+
+    if ($deploymentRequiresBicep -or $ForceBicepVersionCheck) {
+        if ($MinimumBicepVersion) {
+            Write-Build White "Checking for minimum version of Bicep CLI: $MinimumBicepVersion"
+            Assert-BicepCliVersionInPath -MinimumBicepVersion $MinimumBicepVersion
+        }
+        else {
+            Write-Build White "Checking for required version of Bicep CLI: $RequiredBicepVersion"
+            Assert-BicepCliVersionInPath -RequiredBicepVersion $RequiredBicepVersion
+        }
+    }
+    else {
+        Write-Build White "Skipping Bicep CLI checks - no Bicep-based deployments found. Use 'ForceBicepVersionCheck' to override this behaviour."
+    }
 }
