@@ -6,6 +6,9 @@ BeforeAll {
     # sut
     . $PSCommandPath.Replace('.Tests.ps1','.ps1')
 
+    # Make other functions available for mocking
+    function Set-TemporaryAzureResourceNetworkAccess {}
+
     Set-StrictMode -Version Latest
 }
 

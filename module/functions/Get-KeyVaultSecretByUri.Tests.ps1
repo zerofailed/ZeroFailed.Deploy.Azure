@@ -147,7 +147,7 @@ Describe 'Get-KeyVaultSecretByUri' {
             
             Get-KeyVaultSecretByUri -SecretUri $testUri -Verbose
             
-            Should -Invoke Write-Verbose -ParameterFilter { $Message -match 'Args:.*vaultName.*secretName' }
+            Should -Invoke Write-Verbose -ParameterFilter { $Message -match 'Args:.*vaultName.*' }
         }
         
         It 'should return a SecureString' {

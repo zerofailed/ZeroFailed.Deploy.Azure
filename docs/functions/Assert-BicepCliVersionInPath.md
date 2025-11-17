@@ -4,7 +4,7 @@ external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
 Locale: en-GB
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 10/29/2025
+ms.date: 11/17/2025
 PlatyPS schema version: 2024-05-01
 title: Assert-BicepCliVersionInPath
 ---
@@ -20,15 +20,13 @@ Checks that the specified version of the Bicep CLI is available via the PATH.
 ### requiredVersion (Default)
 
 ```
-Assert-BicepCliVersionInPath [-RequiredBicepVersion <string>] [-AllowInstallOrUpgrade <bool>]
- [<CommonParameters>]
+Assert-BicepCliVersionInPath [-RequiredBicepVersion <string>] [<CommonParameters>]
 ```
 
 ### minimumVersion
 
 ```
-Assert-BicepCliVersionInPath -MinimumBicepVersion <string> [-AllowInstallOrUpgrade <bool>]
- [<CommonParameters>]
+Assert-BicepCliVersionInPath -MinimumBicepVersion <string> [<CommonParameters>]
 ```
 
 ## ALIASES
