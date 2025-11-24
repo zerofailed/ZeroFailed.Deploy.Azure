@@ -131,18 +131,21 @@ This property is configured using the following structure:
 $TemporaryNetworkAccessRequiredResources = @(
     @{
         ResourceType = '<resource-type>'                                # See below for support resource types
-        ResourceGroupName = { $deploymentConfig.resourceGroupName }     # Using the scripblock syntax enables lazy-evaluation
+        ResourceGroupName = { $deploymentConfig.resourceGroupName }     # Using the scriptblock syntax enables lazy-evaluation
         Name = { $deploymentConfig.keyVaultName }
     }
 )
 ```
 
 Supported resource types are:
+- AiSearch
 - KeyVault
 - SqlServer
 - StorageAccount
 - WebApp
 - WebAppScm
+
+***NOTE**: More information about developing additional handlers is available [here](./module/_azureResourceNetworkAccessHandlers/README.md).*
 
 
 ### Tasks
@@ -152,7 +155,7 @@ Supported resource types are:
 | `connectAzure`                 | Configures up the Azure PowerShell and/or Azure CLI connection context for the deployment        |
 | `enableTemporaryNetworkAccess` | Apply temporary network access rules to the configured Azure resources.                          |
 | `getDeploymentIdentity`        | Derive the current user's ObjectId (aka PrincipalId) using the current Azure PowerShell context. |
-| `removeTemporaryNetworkAccess` | Remove temporary network access rules from the configured Azure resources.                       |
+| `removeTemporaryNetworkAccess` | Remove temporary network access rules from the configured Azure resources. Uses the 'OnExitActions' extensibility point provided by [ZeroFailed.DevOps.Common](https://github.com/zerofailed/ZeroFailed.DevOps.Common/blob/main/HELP.md#properties-1) to ensure temporary rules are removed even in the event of errors. |
 
 
 <!-- END_GENERATED_HELP -->

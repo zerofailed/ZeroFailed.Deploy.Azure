@@ -30,7 +30,7 @@ task deployAppServiceZipPackages -If { !$SkipAppServiceAppDeployment -and $null 
                 ResourceName       = $resolvedApp.appServiceName
             }
             
-            Set-CorvusTemporaryAzureResourceNetworkAccess @tempNetAccessSplat -Wait
+            Set-TemporaryAzureResourceNetworkAccess @tempNetAccessSplat -Wait
         }
     
         try {
@@ -44,7 +44,7 @@ task deployAppServiceZipPackages -If { !$SkipAppServiceAppDeployment -and $null 
         }
         finally {
             if ($tempNetAccessRequired) {
-                Set-CorvusTemporaryAzureResourceNetworkAccess @tempNetAccessSplat -Revoke
+                Set-TemporaryAzureResourceNetworkAccess @tempNetAccessSplat -Revoke
             }
         }
     }

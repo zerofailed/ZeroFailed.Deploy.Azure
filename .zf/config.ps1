@@ -13,6 +13,7 @@ $zerofailedExtensions = @(
 # Set the required build options
 $PesterTestsDir = "$here/module"
 $PesterCodeCoveragePaths = @("$PesterTestsDir/functions")
+$PesterExcludeTagFilter = 'Integration'
 $PowerShellModulesToPublish = @(
     @{
         ModulePath = "$here/module/ZeroFailed.Deploy.Azure.psd1"
@@ -24,6 +25,11 @@ $PowerShellModulesToPublish = @(
 $PSMarkdownDocsOutputPath = 'docs/functions'
 $PSMarkdownDocsFlattenOutputPath = $true
 $PSMarkdownDocsIncludeModulePage = $false
+
+# A unit test requires this module for mocking purposes
+$RequiredPowerShellModules = @{
+    'Az.KeyVault' = @{}
+}
 
 # Customise the build process
 task . FullBuild
