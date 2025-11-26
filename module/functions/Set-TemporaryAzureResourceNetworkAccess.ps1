@@ -37,7 +37,8 @@ function Set-TemporaryAzureResourceNetworkAccess {
     }
 
     # Load the handler, but not if running in Pester scenarios that need to mock them
-    if (!(Test-Path variable:/IsRunningInPester) -and !$IsRunningInPester) {
+    if (!(Test-Path variable:/IsRunningInPester) -or !$IsRunningInPester) {
+        Write-Verbose "Importing handler: $ResourceType"
         . (Join-Path (Split-Path -Parent $PSCommandPath) '../_azureResourceNetworkAccessHandlers' "_$ResourceType.ps1")
     }
 
