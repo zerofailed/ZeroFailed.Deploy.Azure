@@ -51,7 +51,7 @@ $_cleanupTemporaryNetworkAccess = {
         Remove-Variable -Name $_TEMP_NET_ACCESS_FLAG_NAME -Scope Script -Force
     }
 }
-$script:OnExitActions.Add($_cleanupTemporaryNetworkAccess)
+Register-OnExitAction -Action $_cleanupTemporaryNetworkAccess
 
 # Synopsis: Configures up the Azure PowerShell and/or Azure CLI connection context for the deployment
 task connectAzure -If { !$SkipConnectAzure } -After InitCore readConfiguration,{
