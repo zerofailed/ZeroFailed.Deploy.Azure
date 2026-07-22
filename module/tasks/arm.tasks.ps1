@@ -25,13 +25,13 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
 
         # Prepare parameters for ARM deployment
         # 1. Infer parameters from environment configuration settings
-        $script:parametersWithValues = @{}
+        $parametersWithValues = @{}
         $script:DeploymentConfig.Keys |
             Where-Object {
                 !([string]::IsNullOrEmpty($script:DeploymentConfig[$_])) -and $_ -notin $armDeployment.configKeysToIgnore
             } |
             ForEach-Object {
-                $script:parametersWithValues += @{ $_ = $script:DeploymentConfig[$_]
+                $parametersWithValues += @{ $_ = $script:DeploymentConfig[$_]
             }
         }
         # 2. Process any explicitly-defined additional parameters
@@ -51,7 +51,7 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
         }
 
         Write-Build White "ARM template parameters:"
-        Write-Build White ($script:parametersWithValues | Format-Table | Out-String)
+        Write-Build White ($parametersWithValues | Format-Table | Out-String)
 
         # Support deferred evaluation of ARM deployment configuration values
         $templatePath = Resolve-Value $armDeployment.templatePath
