@@ -2,9 +2,9 @@
 document type: cmdlet
 external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
-Locale: en-GB
+Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 11/14/2025
+ms.date: 09/22/2026
 PlatyPS schema version: 2024-05-01
 title: Get-KeyVaultSecretByUri
 ---
@@ -27,7 +27,9 @@ Get-KeyVaultSecretByUri [-SecretUri] <uri> [<CommonParameters>]
 
 ## DESCRIPTION
 
-Support for query a Key Vault Secret via its URI was added in Az.KeyVault v6.3.0 with the addition of the `-Id` parameter to `Get-AzKeyVaultSecret`. In automation scenarios exerting direct control over the version of a single
+Support for query a Key Vault Secret via its URI was added in Az.KeyVault v6.3.0 with the addition of the `-Id`
+parameter to `Get-AzKeyVaultSecret`.
+In automation scenarios exerting direct control over the version of a single
 Az PowerShell module can cause assembly loading conflicts due to multiple versions of the Az.Accounts module
 being referenced.
 
@@ -40,11 +42,19 @@ This function checks the available version of Az.KeyVault and performs the query
 
 ### Example 1 - Latest version of a secret
 
+```powershell
 Get-KeyVaultSecretByUri -SecretUri https://kvname.vault.azure.net/secrets/secretname
+```
+
+Gets the latest version of a secret.
 
 ### Example 2 - Specific version of a secret
 
+```powershell
 Get-KeyVaultSecretByUri -SecretUri https://kvname.vault.azure.net/secrets/secretname/version
+```
+
+Gets a specific version of a secret.
 
 ## PARAMETERS
 

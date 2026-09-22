@@ -3,6 +3,38 @@
 # </copyright>
 
 function Get-KeyVaultSecretByUri {
+    <#
+    .SYNOPSIS
+    Enables querying a Key Vault Secret via its URI when using all versions of the Az.KeyVault module.
+
+    .DESCRIPTION
+    Support for query a Key Vault Secret via its URI was added in Az.KeyVault v6.3.0 with the addition of the `-Id`
+    parameter to `Get-AzKeyVaultSecret`. In automation scenarios exerting direct control over the version of a single
+    Az PowerShell module can cause assembly loading conflicts due to multiple versions of the Az.Accounts module
+    being referenced.
+
+    This function checks the available version of Az.KeyVault and performs the query in appropriate manner:
+
+    - If using v6.3.0 or greater, using the `-Id` parameter
+    - Otherwise, extracts the Key Vault Name, Secret Name and optionally Secret Version from the URI and uses the older parameter set
+
+    .PARAMETER SecretUri
+    The URI of the secret to be queried
+
+    .EXAMPLE
+    ```powershell
+    Get-KeyVaultSecretByUri -SecretUri https://kvname.vault.azure.net/secrets/secretname
+    ```
+
+    Gets the latest version of a secret.
+
+    .EXAMPLE
+    ```powershell
+    Get-KeyVaultSecretByUri -SecretUri https://kvname.vault.azure.net/secrets/secretname/version
+    ```
+
+    Gets a specific version of a secret.
+    #>
     [CmdletBinding()]
     [OutputType([securestring])]
     param (

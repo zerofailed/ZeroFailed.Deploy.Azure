@@ -2,9 +2,9 @@
 document type: cmdlet
 external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
-Locale: en-GB
+Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 11/14/2025
+ms.date: 09/22/2026
 PlatyPS schema version: 2024-05-01
 title: Assert-TemporaryNetworkAccessRules
 ---
@@ -38,7 +38,7 @@ Supported resource types:
 | `StorageAccount` | Storage Accounts                                    |
 | `SQLServer`      | Azure SQL Database instances                        |
 | `WebApp`         | App Service main web site                           |
-| `WebAppScm`      | App Service SCM web site (e.g. for kudu operations) |
+| `WebAppScm`      | App Service SCM web site (for kudu operations)      |
 
 ## EXAMPLES
 
@@ -60,11 +60,15 @@ $resources = @(
 Assert-TemporaryNetworkAccessRules -RequiredResources $resources
 ```
 
+Adds temporary network access to a storage account and key vault.
+
 ### EXAMPLE 2 - Revoke temporary network access rules previously created
 
 ```powershell
 Assert-TemporaryNetworkAccessRules -RequiredResources $resources -Revoke
 ```
+
+Revokes temporary network access rules previously created.
 
 ## PARAMETERS
 
