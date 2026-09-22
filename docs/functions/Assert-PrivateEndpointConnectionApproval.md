@@ -2,7 +2,7 @@
 document type: cmdlet
 external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
-Locale: en-GB
+Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
 ms.date: 09/22/2026
 PlatyPS schema version: 2024-05-01
@@ -30,16 +30,20 @@ Assert-PrivateEndpointConnectionApproval [-PrivateLinkResourceId] <string>
 ## DESCRIPTION
 
 When a service such as Microsoft Fabric, Azure Synapse or Azure Data Factory creates a managed private endpoint
-to an Azure resource, it sends a private endpoint connection request to that resource. The connection cannot
-be used until the owner of the resource approves it. This function finds the connection on the target resource
+to an Azure resource, it sends a private endpoint connection request to that resource.
+The connection cannot
+be used until the owner of the resource approves it.
+This function finds the connection on the target resource
 and approves it, so that the approval can be automated as part of a deployment process.
 
 The connection is identified by the name of its private endpoint, matched against the `-PrivateEndpointNameLike`
-wildcard pattern. Services name the private endpoint after the managed private endpoint, typically with a prefix
+wildcard pattern.
+Services name the private endpoint after the managed private endpoint, typically with a prefix
 identifying the requesting workspace, so a pattern such as `*.my-endpoint-name` is usually sufficient.
 
 The connection only appears on the target resource once the requesting service has finished provisioning its
-private endpoint, so the function polls for it until `-TimeoutSeconds` has elapsed. It then acts on the
+private endpoint, so the function polls for it until `-TimeoutSeconds` has elapsed.
+It then acts on the
 connection's status:
 
 | Status                     | Action                                                                                      |
@@ -50,7 +54,8 @@ connection's status:
 | Not found before timeout   | Writes a warning (`Status = 'NotFound'`, `Action = 'None'`)                                 |
 
 Rejected connections are never approved automatically, as rejecting a connection is a decision made by the owner
-of the resource. If more than one connection matches the pattern, the function throws rather than guessing.
+of the resource.
+If more than one connection matches the pattern, the function throws rather than guessing.
 
 Errors raised when listing or approving connections, such as the deploying identity lacking permission to approve
 connections on the resource, are not caught, so that the caller can decide how to handle them.
@@ -60,25 +65,26 @@ connections on the resource, are not caught, so that the caller can decide how t
 ### EXAMPLE 1 - Approve a Fabric workspace's managed private endpoint to a Key Vault
 
 ```powershell
-Assert-PrivateEndpointConnectionApproval `
-    -PrivateLinkResourceId '/subscriptions/{id}/resourceGroups/rg-sales-dev/providers/Microsoft.KeyVault/vaults/kv-sales-dev' `
-    -PrivateEndpointNameLike '*kv-sales-dev.vault'
+Assert-PrivateEndpointConnectionApproval -PrivateLinkResourceId '/subscriptions/{id}/resourceGroups/rg-sales-dev/providers/Microsoft.KeyVault/vaults/kv-sales-dev' -PrivateEndpointNameLike '*kv-sales-dev.vault'
 ```
+
+Approves a Fabric workspace's managed private endpoint to a Key Vault.
 
 ### EXAMPLE 2 - Approve a Synapse workspace's managed private endpoint to a storage account, with a custom message
 
 ```powershell
-Assert-PrivateEndpointConnectionApproval `
-    -PrivateLinkResourceId '/subscriptions/{id}/resourceGroups/rg-data/providers/Microsoft.Storage/storageAccounts/stdatalake' `
-    -PrivateEndpointNameLike '*mysynapse.datalake-dfs' `
-    -Description 'Approved by the data platform deployment'
+Assert-PrivateEndpointConnectionApproval -PrivateLinkResourceId '/subscriptions/{id}/resourceGroups/rg-data/providers/Microsoft.Storage/storageAccounts/stdatalake' -PrivateEndpointNameLike '*mysynapse.datalake-dfs' -Description 'Approved by the data platform deployment'
 ```
+
+Approves a Synapse workspace's managed private endpoint to a storage account, with a custom message.
 
 ### EXAMPLE 3 - Check what would be approved, without approving anything
 
 ```powershell
 Assert-PrivateEndpointConnectionApproval -PrivateLinkResourceId $resourceId -PrivateEndpointNameLike '*kv-sales-dev.vault' -WhatIf
 ```
+
+Shows what would be approved, without approving anything.
 
 ## PARAMETERS
 
@@ -215,7 +221,7 @@ HelpMessage: ''
 
 ### -WhatIf
 
-Shows what would happen if the cmdlet runs. The cmdlet is not run.
+Runs the command in a mode that only reports what would happen without performing the actions.
 
 ```yaml
 Type: System.Management.Automation.SwitchParameter
