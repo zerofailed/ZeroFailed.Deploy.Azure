@@ -57,7 +57,7 @@ function _removeExistingTempRules_AiSearch {
         }
         $resp = Invoke-AzRestMethod -Method PATCH -Uri "https://management.azure.com$($searchService.Id)?api-version=2025-05-01" -Payload ($payload | ConvertTo-Json -Depth 10)
         if ($resp.StatusCode -ge 400) {
-            throw $_.Exception.Message
+            throw $resp.Content
         }
     }
 }
