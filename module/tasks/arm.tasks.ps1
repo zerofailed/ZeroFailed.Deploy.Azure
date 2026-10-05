@@ -11,16 +11,28 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
     
     foreach ($armDeployment in $RequiredArmDeployments) {
 
+        # Determine the deployment scope (defaults to resource group for backwards-compatibility)
+        $validScopes = @('resourceGroup', 'subscription', 'managementGroup', 'tenant')
+        $requestedScope = if ($armDeployment.ContainsKey('scope') -and $armDeployment.scope) { Resolve-Value $armDeployment.scope } else { 'resourceGroup' }
+        $scope = $validScopes | Where-Object { $_ -eq $requestedScope }      # case-insensitive match, normalised to canonical casing
+        if (!$scope) {
+            throw "Unable to process 'RequiredArmDeployments' configuration due to unsupported scope '$requestedScope'. Supported scopes: $($validScopes -join ', ')"
+        }
+
         # Validate required properties
-        $requiredProps = @('templatePath', 'resourceGroupName', 'location')
+        $requiredProps = @('templatePath', 'location')
+        switch ($scope) {
+            'resourceGroup'   { $requiredProps += 'resourceGroupName' }
+            'managementGroup' { $requiredProps += 'managementGroupId' }
+        }
         $missingRequiredProps = $requiredProps | Where-Object { $_ -notin $armDeployment.Keys }
         if ($missingRequiredProps) {
-            throw "Unable to process 'RequiredArmDeployments' configuration due to missing required properties: $($missingRequiredProps -join ', ')"
+            throw "Unable to process 'RequiredArmDeployments' configuration for scope '$scope' due to missing required properties: $($missingRequiredProps -join ', ')"
         }
 
         # Validate optional properties
         if (!$armDeployment.ContainsKey('configKeysToIgnore')) {
-            $armDeployment += @{ $configKeysToIgnore = @() }
+            $armDeployment += @{ configKeysToIgnore = @() }
         }
 
         # Prepare parameters for ARM deployment
@@ -55,24 +67,44 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
 
         # Support deferred evaluation of ARM deployment configuration values
         $templatePath = Resolve-Value $armDeployment.templatePath
-        $resourceGroupName = Resolve-Value $armDeployment.resourceGroupName
         $location = Resolve-Value $armDeployment.location
 
         $name = Split-Path -LeafBase $templatePath
-        Write-Build Green "Deploying ARM template: $name"
-    
-        $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
-        if (!$rg) {
-            New-AzResourceGroup -Name $resourceGroupName -Location $location
+        Write-Build Green "Deploying ARM template: $name (scope: $scope)"
+
+        $deploymentParams = @{
+            Name = ("$name-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+            TemplateFile = $templatePath
+            TemplateParameterObject = $parametersWithValues
+            Location = $location
+            Verbose = $true
         }
-        New-AzResourceGroupDeployment -Name ("$name-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss")) `
-                                        -ResourceGroupName $resourceGroupName `
-                                        -TemplateFile $templatePath `
-                                        -TemplateParameterObject $parametersWithValues `
-                                        -Location $location `
-                                        -Verbose |
-            Tee-Object -Variable deploymentResult
-    
+
+        switch ($scope) {
+            'resourceGroup' {
+                $resourceGroupName = Resolve-Value $armDeployment.resourceGroupName
+                $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
+                if (!$rg) {
+                    New-AzResourceGroup -Name $resourceGroupName -Location $location
+                }
+                New-AzResourceGroupDeployment @deploymentParams -ResourceGroupName $resourceGroupName |
+                    Tee-Object -Variable deploymentResult
+            }
+            'subscription' {
+                New-AzSubscriptionDeployment @deploymentParams |
+                    Tee-Object -Variable deploymentResult
+            }
+            'managementGroup' {
+                $managementGroupId = Resolve-Value $armDeployment.managementGroupId
+                New-AzManagementGroupDeployment @deploymentParams -ManagementGroupId $managementGroupId |
+                    Tee-Object -Variable deploymentResult
+            }
+            'tenant' {
+                New-AzTenantDeployment @deploymentParams |
+                    Tee-Object -Variable deploymentResult
+            }
+        }
+
         if ($deploymentResult.ProvisioningState -eq 'Succeeded') {
             if ($deploymentResult.Outputs) {
                 # Make ARM deployment outputs available to rest of deployment process

@@ -85,6 +85,33 @@ $RequiredArmDeployments = @(
 )
 ```
 
+The optional `scope` setting controls the ARM deployment scope. When omitted it defaults to `resourceGroup`. Supported values (case-insensitive) and the settings each requires are:
+
+| `scope`           | Required settings                                | Deployment cmdlet                                            |
+| ----------------- | ------------------------------------------------ | ------------------------------------------------------------ |
+| `resourceGroup`   | `templatePath`, `resourceGroupName`, `location`  | `New-AzResourceGroupDeployment` (creates the resource group if it does not exist) |
+| `subscription`    | `templatePath`, `location`                       | `New-AzSubscriptionDeployment` (targets the current Azure context's subscription) |
+| `managementGroup` | `templatePath`, `location`, `managementGroupId`  | `New-AzManagementGroupDeployment`                            |
+| `tenant`          | `templatePath`, `location`                       | `New-AzTenantDeployment`                                     |
+
+For all scopes other than `resourceGroup`, `location` is where the deployment metadata is stored. The `scope` and `managementGroupId` settings support the scriptblock syntax for lazy-evaluation. For example:
+
+```powershell
+$RequiredArmDeployments = @(
+    @{
+        scope = 'subscription'
+        templatePath = 'my-subscription-template.bicep'     # must declare: targetScope = 'subscription'
+        location = 'uksouth'
+    }
+    @{
+        scope = 'managementGroup'
+        templatePath = 'my-mg-template.bicep'               # must declare: targetScope = 'managementGroup'
+        managementGroupId = { $deploymentConfig.managementGroupId }
+        location = 'uksouth'
+    }
+)
+```
+
 ### Tasks
 
 | Name                 | Description                                                                                                                  |
