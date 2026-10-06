@@ -8,6 +8,9 @@ $SkipArmDeployments = [Convert]::ToBoolean((property ZF_DEPLOY_SKIP_ARM_DEPLOYME
 # Synopsis: Details the ARM deployments that need to be run for the deployment process.
 $RequiredArmDeployments = @()
 
+# Synopsis: When true, ARM deployments are run in 'what-if' mode, which reports the changes that would be made without deploying anything. Applies to all configured ARM deployments. Defaults to false.
+$ArmWhatIfMode = [Convert]::ToBoolean((property ZF_DEPLOY_ARM_WHATIF_MODE $false))
+
 # Synopsis: When using Bicep templates, ensures that the specified Bicep CLI version is used; installing via Azure CLI if it is missing. When blank any version is considered acceptable. Use 'latest' to ensure the most current release.
 $RequiredBicepVersion = property ZF_DEPLOY_REQUIRED_BICEP_VERSION ''
 

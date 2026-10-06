@@ -9,7 +9,7 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
                         -After ProvisionCore `
                         -Jobs readConfiguration,connectAzure,ensureBicepVersion,{
     
-    foreach ($armDeployment in $RequiredArmDeployments) {
+    :nextArmDeployment foreach ($armDeployment in $RequiredArmDeployments) {
 
         # Determine the deployment scope (defaults to resource group for backwards-compatibility)
         $validScopes = @('resourceGroup', 'subscription', 'managementGroup', 'tenant')
@@ -70,8 +70,6 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
         $location = Resolve-Value $armDeployment.location
 
         $name = Split-Path -LeafBase $templatePath
-        Write-Build Green "Deploying ARM template: $name (scope: $scope)"
-
         $deploymentParams = @{
             Name = ("$name-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
             TemplateFile = $templatePath
@@ -80,11 +78,24 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
             Verbose = $true
         }
 
+        if ($ArmWhatIfMode) {
+            Write-Build Yellow "Running ARM what-if for template: $name (scope: $scope) - no changes will be deployed"
+            $deploymentParams.WhatIf = $true
+        }
+        else {
+            Write-Build Green "Deploying ARM template: $name (scope: $scope)"
+        }
+
         switch ($scope) {
             'resourceGroup' {
                 $resourceGroupName = Resolve-Value $armDeployment.resourceGroupName
                 $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
                 if (!$rg) {
+                    if ($ArmWhatIfMode) {
+                        # Creating the resource group is a real change, and what-if cannot run against a missing resource group
+                        Write-Warning "Resource group '$resourceGroupName' does not exist - skipping what-if for '$name'. It would be created by a real deployment."
+                        continue nextArmDeployment      # a plain 'continue' would only exit the enclosing switch
+                    }
                     New-AzResourceGroup -Name $resourceGroupName -Location $location
                 }
                 New-AzResourceGroupDeployment @deploymentParams -ResourceGroupName $resourceGroupName |
@@ -103,6 +114,11 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
                 New-AzTenantDeployment @deploymentParams |
                     Tee-Object -Variable deploymentResult
             }
+        }
+
+        if ($ArmWhatIfMode) {
+            # What-if does not produce a deployment result, so there are no outputs to process
+            continue
         }
 
         if ($deploymentResult.ProvisioningState -eq 'Succeeded') {

@@ -49,6 +49,7 @@ This group contains features for managing Azure Resource Manager deployments (us
 
 | Name                      | Default Value | ENV Override                          | Description                                                                                                                                                                                         |
 | ------------------------- | ------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ArmWhatIfMode`           | $false        | `ZF_DEPLOY_ARM_WHATIF_MODE`           | When true, ARM deployments are run in 'what-if' mode, which reports the changes that would be made without deploying anything. Applies to all configured ARM deployments. See [note below](#armwhatifmode). |
 | `ForceBicepVersionCheck`  |               | `ZF_DEPLOY_FORCE_BICEP_VERSION_CHECK` | When true, the available Bicep CLI version will be checked, even if the ARM deployment does not reference a Bicep template.                                                                         |
 | `MinimumBicepVersion`     |               | `ZF_DEPLOY_MINIMUM_BICEP_VERSION`     | Specifies the minimum version of the Bicep CLI that should be available. If not found, the latest version will be installed.                                                                        |
 | `RequiredArmDeployments`  | @()           |                                       | Details the ARM deployments that need to be run for the deployment process. See [note below](#requiredarmdeployments) for configuration syntax.                                                     |
@@ -56,6 +57,15 @@ This group contains features for managing Azure Resource Manager deployments (us
 | `SkipArmDeployments`      | $false        | `ZF_DEPLOY_SKIP_ARM_DEPLOYMENTS`      | When true, skips any configured ARM deployments.                                                                                                                                                    |
 | `SkipEnsureBicepVersion`  | $false        | `ZF_DEPLOY_SKIP_ENSURE_BICEP_VERSION` | When true, the available Bicep CLI version will not be validated, or installed if missing.                                                                                                                     |
 | `ZF_ArmDeploymentOutputs` | @{}           | `ZF_DEPLOY_ARM_DEPLOYMENT_OUTPUTS`    | A script-scoped variable containing the outputs from any ARM deployments that will be available to the rest of the deployment process. Available for overriding as part of niche testing scenarios. |
+
+#### ArmWhatIfMode
+
+Set this property in your build configuration to make what-if the default for all ARM deployments, or override it at runtime via the `ZF_DEPLOY_ARM_WHATIF_MODE` environment variable (e.g. `ZF_DEPLOY_ARM_WHATIF_MODE=true`) or a build parameter.
+
+When enabled:
+- Each deployment is run with `-WhatIf`, so the predicted changes are written to the build log and nothing is deployed.
+- Resource groups are not created. If a resource group does not exist, a warning is shown and what-if is skipped for that deployment.
+- ARM deployment outputs are not produced, so `ZF_ArmDeploymentOutputs` is not populated. Later tasks that depend on those outputs may fail or need to be skipped.
 
 #### RequiredArmDeployments
 
