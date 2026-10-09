@@ -15,7 +15,7 @@ function Invoke-ArmDeployment
 
     A '.bicepparam' file is passed via '-TemplateParameterFile', and its 'using' statement names the template. The environment configuration is not passed as template parameters, and 'additionalParameters' are not supported.
 
-    When the entry has a 'subscriptionId', the Az context is switched to that subscription for the deployment and restored afterwards.
+    When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards.
 
     .PARAMETER ArmDeployment
     The deployment entry. Supported keys: 'templatePath', 'location', 'scope' ('resourceGroup' (the default), 'subscription', 'managementGroup' or 'tenant'), 'resourceGroupName', 'managementGroupId', 'subscriptionId', 'additionalParameters' and 'configKeysToIgnore'.
@@ -27,7 +27,7 @@ function Invoke-ArmDeployment
     When specified, runs the ARM what-if operation instead of a deployment. No resource group is created.
 
     .PARAMETER ContinueOnWhatIfError
-    When specified with 'WhatIfMode', a failed what-if operation is reported as a warning instead of an error.
+    When specified with 'WhatIfMode', an error from the what-if operation, including a template build or validation error, is reported as a warning instead of an error.
 
     .OUTPUTS
     The deployment result, or $null for a what-if run or a skipped deployment.
@@ -81,85 +81,90 @@ function Invoke-ArmDeployment
         throw "Unable to process 'RequiredArmDeployments' configuration for scope '$scope': 'subscriptionId' is only supported at 'resourceGroup' and 'subscription' scope"
     }
 
-    # Support deferred evaluation of ARM deployment configuration values
-    $templatePath = Resolve-Value $ArmDeployment.templatePath
-    $location = Resolve-Value $ArmDeployment.location
-    $isBicepParamFile = $templatePath.EndsWith('.bicepparam', [StringComparison]::OrdinalIgnoreCase)
-
-    $name = Split-Path -LeafBase $templatePath
-    $deploymentParams = @{
-        Name = ("$name-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
-        Verbose = $true
-    }
-    # New-AzResourceGroupDeployment has no 'Location' parameter; the resource group sets it
-    if ($scope -ne 'resourceGroup') {
-        $deploymentParams.Location = $location
-    }
-
-    if ($isBicepParamFile) {
-        if ($ArmDeployment.ContainsKey('additionalParameters') -and $ArmDeployment.additionalParameters) {
-            # Az only accepts overrides beside a '.bicepparam' file as dynamic named parameters, which can silently bind to the cmdlet's own parameters (e.g. 'Location')
-            throw "Unable to process 'RequiredArmDeployments' configuration for '$templatePath': 'additionalParameters' are not supported with a '.bicepparam' file - set the values in the '.bicepparam' file instead"
-        }
-        # The 'using' statement in the '.bicepparam' file names the template
-        $deploymentParams.TemplateParameterFile = $templatePath
-        Write-Host "ARM template parameters: from '$templatePath'"
-    }
-    else {
-        $configKeysToIgnore = if ($ArmDeployment.ContainsKey('configKeysToIgnore')) { $ArmDeployment.configKeysToIgnore } else { @() }
-
-        # Prepare parameters for ARM deployment
-        # 1. Infer parameters from environment configuration settings
-        $parametersWithValues = @{}
-        $DeploymentConfig.Keys |
-            Where-Object {
-                !([string]::IsNullOrEmpty($DeploymentConfig[$_])) -and $_ -notin $configKeysToIgnore
-            } |
-            ForEach-Object {
-                $parametersWithValues += @{ $_ = $DeploymentConfig[$_] }
-            }
-        # 2. Process any explicitly-defined additional parameters
-        if ($ArmDeployment.ContainsKey('additionalParameters') -and $ArmDeployment.additionalParameters) {
-            $ArmDeployment.additionalParameters.Keys |
-            Where-Object { $_ -notin $configKeysToIgnore } |
-            ForEach-Object {
-                if ($parametersWithValues.ContainsKey($_)) {
-                    Write-Verbose "Overriding environment config parameter '$_' via additionalParameters"
-                    $parametersWithValues[$_] = Resolve-Value $ArmDeployment.additionalParameters[$_]
-                }
-                else {
-                    Write-Verbose "Setting additional parameter '$_'"
-                    $parametersWithValues += @{ $_ = Resolve-Value $ArmDeployment.additionalParameters[$_] }
-                }
-            }
-        }
-
-        Write-Host "ARM template parameters:"
-        Write-Host ($parametersWithValues | Format-Table | Out-String)
-
-        $deploymentParams.TemplateFile = $templatePath
-        $deploymentParams.TemplateParameterObject = $parametersWithValues
-    }
-
-    if ($WhatIfMode) {
-        Write-Host "Running ARM what-if for template: $name (scope: $scope) - no changes will be deployed"
-        $deploymentParams.WhatIf = $true
-    }
-    else {
-        Write-Host "Deploying ARM template: $name (scope: $scope)"
-    }
-
     $savedContext = $null
     try {
         if ($subscriptionId) {
-            # The Az context is process-wide, so it is restored in the 'finally' block
+            # Switch first, so that every deferred value below is evaluated in the target subscription.
+            # The Az context is process-wide, so it is restored in the 'finally' block.
             $savedContext = Get-AzContext
             Write-Host "Switching Az context to subscription: $subscriptionId"
-            Set-AzContext -Subscription $subscriptionId | Out-Null
+            Set-AzContext -Subscription $subscriptionId -Scope Process | Out-Null
+        }
+
+        # Support deferred evaluation of ARM deployment configuration values
+        $templatePath = Resolve-Value $ArmDeployment.templatePath
+        $location = Resolve-Value $ArmDeployment.location
+        $resourceGroupName = if ($scope -eq 'resourceGroup') { Resolve-Value $ArmDeployment.resourceGroupName } else { $null }
+        $managementGroupId = if ($scope -eq 'managementGroup') { Resolve-Value $ArmDeployment.managementGroupId } else { $null }
+        $isBicepParamFile = $templatePath.EndsWith('.bicepparam', [StringComparison]::OrdinalIgnoreCase)
+
+        $name = Split-Path -LeafBase $templatePath
+        $deploymentParams = @{
+            Name = ("$name-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+            Verbose = $true
+        }
+        switch ($scope) {
+            # New-AzResourceGroupDeployment has no 'Location' parameter; the resource group sets it
+            'resourceGroup'   { $deploymentParams.ResourceGroupName = $resourceGroupName }
+            'subscription'    { $deploymentParams.Location = $location }
+            'managementGroup' { $deploymentParams.Location = $location; $deploymentParams.ManagementGroupId = $managementGroupId }
+            'tenant'          { $deploymentParams.Location = $location }
+        }
+
+        if ($isBicepParamFile) {
+            if ($ArmDeployment.ContainsKey('additionalParameters') -and $ArmDeployment.additionalParameters) {
+                # Az only accepts overrides beside a '.bicepparam' file as dynamic named parameters, which can silently bind to the cmdlet's own parameters (e.g. 'Location')
+                throw "Unable to process 'RequiredArmDeployments' configuration for '$templatePath': 'additionalParameters' are not supported with a '.bicepparam' file - set the values in the '.bicepparam' file instead"
+            }
+            # The 'using' statement in the '.bicepparam' file names the template
+            $deploymentParams.TemplateParameterFile = $templatePath
+            Write-Host "ARM template parameters: from '$templatePath'"
+        }
+        else {
+            $configKeysToIgnore = if ($ArmDeployment.ContainsKey('configKeysToIgnore')) { $ArmDeployment.configKeysToIgnore } else { @() }
+
+            # Prepare parameters for ARM deployment
+            # 1. Infer parameters from environment configuration settings
+            $parametersWithValues = @{}
+            $DeploymentConfig.Keys |
+                Where-Object {
+                    !([string]::IsNullOrEmpty($DeploymentConfig[$_])) -and $_ -notin $configKeysToIgnore
+                } |
+                ForEach-Object {
+                    $parametersWithValues += @{ $_ = $DeploymentConfig[$_] }
+                }
+            # 2. Process any explicitly-defined additional parameters
+            if ($ArmDeployment.ContainsKey('additionalParameters') -and $ArmDeployment.additionalParameters) {
+                $ArmDeployment.additionalParameters.Keys |
+                Where-Object { $_ -notin $configKeysToIgnore } |
+                ForEach-Object {
+                    if ($parametersWithValues.ContainsKey($_)) {
+                        Write-Verbose "Overriding environment config parameter '$_' via additionalParameters"
+                        $parametersWithValues[$_] = Resolve-Value $ArmDeployment.additionalParameters[$_]
+                    }
+                    else {
+                        Write-Verbose "Setting additional parameter '$_'"
+                        $parametersWithValues += @{ $_ = Resolve-Value $ArmDeployment.additionalParameters[$_] }
+                    }
+                }
+            }
+
+            Write-Host "ARM template parameters:"
+            Write-Host ($parametersWithValues | Format-Table | Out-String)
+
+            $deploymentParams.TemplateFile = $templatePath
+            $deploymentParams.TemplateParameterObject = $parametersWithValues
+        }
+
+        if ($WhatIfMode) {
+            Write-Host "Running ARM what-if for template: $name (scope: $scope) - no changes will be deployed"
+            $deploymentParams.WhatIf = $true
+        }
+        else {
+            Write-Host "Deploying ARM template: $name (scope: $scope)"
         }
 
         if ($scope -eq 'resourceGroup') {
-            $resourceGroupName = Resolve-Value $ArmDeployment.resourceGroupName
             $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
             if (!$rg) {
                 if ($WhatIfMode) {
@@ -174,9 +179,9 @@ function Invoke-ArmDeployment
         try {
             # An assignment rather than 'Tee-Object', so that the function returns the result only once
             $deploymentResult = switch ($scope) {
-                'resourceGroup'   { New-AzResourceGroupDeployment @deploymentParams -ResourceGroupName $resourceGroupName }
+                'resourceGroup'   { New-AzResourceGroupDeployment @deploymentParams }
                 'subscription'    { New-AzSubscriptionDeployment @deploymentParams }
-                'managementGroup' { New-AzManagementGroupDeployment @deploymentParams -ManagementGroupId (Resolve-Value $ArmDeployment.managementGroupId) }
+                'managementGroup' { New-AzManagementGroupDeployment @deploymentParams }
                 'tenant'          { New-AzTenantDeployment @deploymentParams }
             }
         }
@@ -197,7 +202,13 @@ function Invoke-ArmDeployment
     finally {
         if ($savedContext) {
             Write-Host "Restoring the previous Az context"
-            Set-AzContext -Context $savedContext | Out-Null
+            try {
+                Set-AzContext -Context $savedContext -Scope Process | Out-Null
+            }
+            catch {
+                # Never replace the deployment's own error with a restore error
+                Write-Warning "Unable to restore the previous Az context '$($savedContext.Name)': $($_.Exception.Message)"
+            }
         }
     }
 }

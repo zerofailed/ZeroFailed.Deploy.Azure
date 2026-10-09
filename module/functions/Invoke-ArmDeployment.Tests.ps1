@@ -38,7 +38,7 @@ BeforeAll {
     function Get-AzResourceGroup { [CmdletBinding()] param ($Name) }
     function New-AzResourceGroup { [CmdletBinding()] param ($Name, $Location) }
     function Get-AzContext { [CmdletBinding()] param () }
-    function Set-AzContext { [CmdletBinding()] param ($Subscription, $Context) }
+    function Set-AzContext { [CmdletBinding()] param ($Subscription, $Context, $Scope) }
     # Provided by the ZeroFailed module at runtime
     function Resolve-Value { param ($Value) if ($Value -is [scriptblock]) { & $Value } else { $Value } }
 
@@ -251,8 +251,31 @@ Describe 'Invoke-ArmDeployment' {
 
             Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} -WhatIfMode:($Mode -eq 'what-if')
 
-            Should -Invoke Set-AzContext -Times 1 -Exactly -ParameterFilter { $Subscription -eq '11111111-1111-1111-1111-111111111111' }
+            Should -Invoke Set-AzContext -Times 1 -Exactly -ParameterFilter { $Subscription -eq '11111111-1111-1111-1111-111111111111' -and $Scope -eq 'Process' }
             $script:calls[0] | Should -Be 'setContext'
+            Should -Invoke Set-AzContext -Times 1 -Exactly -ParameterFilter { $Context.Name -eq 'original' -and $Scope -eq 'Process' }
+        }
+
+        It 'Evaluates deferred values after the subscription switch' {
+            $entry = New-TestDeployment -Scope subscription
+            $entry.subscriptionId = '11111111-1111-1111-1111-111111111111'
+            $entry.templatePath = { $script:calls.Add('resolveTemplatePath'); 'main.bicep' }
+            $entry.additionalParameters = @{ p1 = { $script:calls.Add('resolveParameter'); 'v' } }
+
+            Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{}
+
+            $script:calls[0] | Should -Be 'setContext'
+            $script:calls | Should -Contain 'resolveTemplatePath'
+            $script:calls | Should -Contain 'resolveParameter'
+        }
+
+        It 'Restores the context after a skipped what-if for a missing resource group' {
+            Mock Get-AzResourceGroup { $null }
+            $entry = New-TestDeployment -Scope resourceGroup
+            $entry.subscriptionId = '11111111-1111-1111-1111-111111111111'
+
+            Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} -WhatIfMode | Should -BeNullOrEmpty
+
             Should -Invoke Set-AzContext -Times 1 -Exactly -ParameterFilter { $Context.Name -eq 'original' }
         }
 
@@ -284,6 +307,28 @@ Describe 'Invoke-ArmDeployment' {
 
             Should -Invoke Set-AzContext -Times 1 -Exactly -ParameterFilter { $Context.Name -eq 'original' }
         }
+
+        It 'Restores the context when the subscription switch itself fails' {
+            Mock Set-AzContext { throw 'Subscription not found' } -ParameterFilter { $Subscription }
+            $entry = New-TestDeployment -Scope subscription
+            $entry.subscriptionId = '11111111-1111-1111-1111-111111111111'
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } | Should -Throw '*Subscription not found*'
+
+            Should -Not -Invoke New-AzSubscriptionDeployment
+            Should -Invoke Set-AzContext -Times 1 -Exactly -ParameterFilter { $Context.Name -eq 'original' }
+        }
+
+        It 'Keeps the deployment error, and warns, when the restore also fails' {
+            Mock New-AzSubscriptionDeployment { throw 'Deployment failed' }
+            Mock Set-AzContext { throw 'Restore failed' } -ParameterFilter { $Context }
+            $entry = New-TestDeployment -Scope subscription
+            $entry.subscriptionId = '11111111-1111-1111-1111-111111111111'
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } | Should -Throw '*Deployment failed*'
+
+            Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like "*Unable to restore the previous Az context 'original'*Restore failed*" }
+        }
     }
 
     Context 'What-if errors' {
@@ -305,6 +350,15 @@ Describe 'Invoke-ArmDeployment' {
 
         It 'Throws a deployment error even with ContinueOnWhatIfError' {
             { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope subscription) -DeploymentConfig @{} -ContinueOnWhatIfError } | Should -Throw '*What-if failed*'
+        }
+
+        It 'Reports a template build error as a warning with ContinueOnWhatIfError, as HELP.md states' {
+            Mock New-AzSubscriptionDeployment { throw 'Bicep build failed: BCP018' }
+
+            $result = Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope subscription) -DeploymentConfig @{} -WhatIfMode -ContinueOnWhatIfError
+
+            $result | Should -BeNullOrEmpty
+            Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like '*BCP018*' }
         }
 
         It 'Throws a configuration error even with ContinueOnWhatIfError' {
@@ -337,15 +391,21 @@ Describe 'Module wiring' {
         $armTasks | Should -Match 'Invoke-ArmDeployment\s+-ArmDeployment'
     }
 
-    It 'Treats <Path> as a Bicep deployment in ensureBicepVersion: <Expected>' -ForEach @(
-        @{ Path = 'main.bicep'; Expected = $true }
-        @{ Path = 'main.bicepparam'; Expected = $true }
-        @{ Path = 'main.json'; Expected = $false }
+    It 'Treats <Description> as a Bicep deployment in ensureBicepVersion: <Expected>' -ForEach @(
+        @{ Description = 'main.bicep'; Path = 'main.bicep'; Expected = $true }
+        @{ Description = 'main.bicepparam'; Path = 'main.bicepparam'; Expected = $true }
+        @{ Description = 'main.json'; Path = 'main.json'; Expected = $false }
+        @{ Description = 'a scriptblock that returns main.bicep'; Path = { 'main.bicep' }; Expected = $true }
     ) {
-        # Capture the pattern first, because 'Should' resets '$Matches'
-        $found = $armTasks -match "templatePath -match '(?<pattern>[^']+)'"
-        $pattern = $Matches.pattern
-        $found | Should -BeTrue
-        ($Path -match $pattern) | Should -Be $Expected
+        # Run the task's own filter against a deployment entry
+        $line = ($armTasks -split "?
+") | Where-Object { $_ -match '\$deploymentRequiresBicep\s*=' }
+        $filterText = [regex]::Match($line, 'Where-Object \{ (?<filter>.+) \}\s*$').Groups['filter'].Value
+        $filterText | Should -Not -BeNullOrEmpty
+        $filter = [scriptblock]::Create($filterText)
+
+        $matched = @(@{ templatePath = $Path } | Where-Object $filter)
+
+        ($matched.Count -eq 1) | Should -Be $Expected
     }
 }
