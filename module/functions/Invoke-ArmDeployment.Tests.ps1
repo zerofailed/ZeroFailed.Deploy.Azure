@@ -398,8 +398,7 @@ Describe 'Module wiring' {
         @{ Description = 'a scriptblock that returns main.bicep'; Path = { 'main.bicep' }; Expected = $true }
     ) {
         # Run the task's own filter against a deployment entry
-        $line = ($armTasks -split "?
-") | Where-Object { $_ -match '\$deploymentRequiresBicep\s*=' }
+        $line = ($armTasks -split "`r?`n") | Where-Object { $_ -match '\$deploymentRequiresBicep\s*=' }
         $filterText = [regex]::Match($line, 'Where-Object \{ (?<filter>.+) \}\s*$').Groups['filter'].Value
         $filterText | Should -Not -BeNullOrEmpty
         $filter = [scriptblock]::Create($filterText)
