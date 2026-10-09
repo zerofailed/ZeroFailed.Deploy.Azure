@@ -104,13 +104,22 @@ Describe 'Assert-BicepCliVersionInPath' {
             Should -Not -Invoke _getAzBicepVersion
             Should -Not -Invoke _installAzBicep
             Should -Not -Invoke Set-Item
+            # The latest release lookup calls the GitHub API, which a pinned version does not need
+            Should -Not -Invoke Invoke-RestMethod
         }
-        
+
+        It 'Should not fail on a network error when required version matches installed version available in the PATH' {
+            Mock Invoke-RestMethod { throw 'Network error' } -ParameterFilter { $Uri -eq 'https://aka.ms/BicepLatestRelease' }
+
+            { Assert-BicepCliVersionInPath -RequiredBicepVersion '0.38.33' } | Should -Not -Throw
+        }
+
         It 'Should require installation when required version differs from installed version available in the PATH and via Azure CLI' {
             Mock _getAzBicepVersion { '0.39.0' } -ParameterFilter { $After -eq $true }
-            
+
             Assert-BicepCliVersionInPath -RequiredBicepVersion '0.39.0'
-            
+
+            Should -Not -Invoke Invoke-RestMethod
             Should -Invoke _getAzBicepVersion -Times 2
             Should -Invoke _installAzBicep -Times 1 -ParameterFilter { $Version -eq 'v0.39.0' }
             Should -Invoke Set-Item -Times 1 -ParameterFilter {
@@ -137,7 +146,8 @@ Describe 'Assert-BicepCliVersionInPath' {
             Mock _getAzBicepVersion {}
             
             Assert-BicepCliVersionInPath -MinimumBicepVersion '0.38.0'
-            
+
+            Should -Not -Invoke Invoke-RestMethod
             Should -Not -Invoke _getAzBicepVersion
             Should -Not -Invoke _installAzBicep
             Should -Not -Invoke Set-Item
