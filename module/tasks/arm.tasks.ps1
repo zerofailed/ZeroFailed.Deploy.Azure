@@ -8,118 +8,20 @@
 task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDeployments -and $RequiredArmDeployments.Count -ge 1 } `
                         -After ProvisionCore `
                         -Jobs readConfiguration,connectAzure,ensureBicepVersion,{
-    
-    :nextArmDeployment foreach ($armDeployment in $RequiredArmDeployments) {
 
-        # Determine the deployment scope (defaults to resource group for backwards-compatibility)
-        $validScopes = @('resourceGroup', 'subscription', 'managementGroup', 'tenant')
-        $requestedScope = if ($armDeployment.ContainsKey('scope') -and $armDeployment.scope) { Resolve-Value $armDeployment.scope } else { 'resourceGroup' }
-        $scope = $validScopes | Where-Object { $_ -eq $requestedScope }      # case-insensitive match, normalised to canonical casing
-        if (!$scope) {
-            throw "Unable to process 'RequiredArmDeployments' configuration due to unsupported scope '$requestedScope'. Supported scopes: $($validScopes -join ', ')"
-        }
+    foreach ($armDeployment in $RequiredArmDeployments) {
 
-        # Validate required properties
-        $requiredProps = @('templatePath', 'location')
-        switch ($scope) {
-            'resourceGroup'   { $requiredProps += 'resourceGroupName' }
-            'managementGroup' { $requiredProps += 'managementGroupId' }
-        }
-        $missingRequiredProps = $requiredProps | Where-Object { $_ -notin $armDeployment.Keys }
-        if ($missingRequiredProps) {
-            throw "Unable to process 'RequiredArmDeployments' configuration for scope '$scope' due to missing required properties: $($missingRequiredProps -join ', ')"
-        }
-
-        # Validate optional properties
-        if (!$armDeployment.ContainsKey('configKeysToIgnore')) {
-            $armDeployment += @{ configKeysToIgnore = @() }
-        }
-
-        # Prepare parameters for ARM deployment
-        # 1. Infer parameters from environment configuration settings
-        $parametersWithValues = @{}
-        $script:DeploymentConfig.Keys |
-            Where-Object {
-                !([string]::IsNullOrEmpty($script:DeploymentConfig[$_])) -and $_ -notin $armDeployment.configKeysToIgnore
-            } |
-            ForEach-Object {
-                $parametersWithValues += @{ $_ = $script:DeploymentConfig[$_]
-            }
-        }
-        # 2. Process any explicitly-defined additional parameters
-        if ($armDeployment.ContainsKey('additionalParameters') -and $armDeployment.additionalParameters) {
-            $armDeployment.additionalParameters.Keys |
-            Where-Object { $_ -notin $armDeployment.configKeysToIgnore } |
-            ForEach-Object {
-                if ($parametersWithValues.ContainsKey($_)) {
-                    Write-Verbose "Overriding environment config parameter '$_' via additionalParameters"
-                    $parametersWithValues[$_] = Resolve-Value $armDeployment.additionalParameters[$_]
-                }
-                else {
-                    Write-Verbose "Setting additional parameter '$_'"
-                    $parametersWithValues += @{ $_ = Resolve-Value $armDeployment.additionalParameters[$_] }
-                }
-            }
-        }
-
-        Write-Build White "ARM template parameters:"
-        Write-Build White ($parametersWithValues | Format-Table | Out-String)
-
-        # Support deferred evaluation of ARM deployment configuration values
-        $templatePath = Resolve-Value $armDeployment.templatePath
-        $location = Resolve-Value $armDeployment.location
-
-        $name = Split-Path -LeafBase $templatePath
-        $deploymentParams = @{
-            Name = ("$name-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
-            TemplateFile = $templatePath
-            TemplateParameterObject = $parametersWithValues
-            Location = $location
-            Verbose = $true
-        }
-
-        if ($ArmWhatIfMode) {
-            Write-Build Yellow "Running ARM what-if for template: $name (scope: $scope) - no changes will be deployed"
-            $deploymentParams.WhatIf = $true
-        }
-        else {
-            Write-Build Green "Deploying ARM template: $name (scope: $scope)"
-        }
-
-        switch ($scope) {
-            'resourceGroup' {
-                $resourceGroupName = Resolve-Value $armDeployment.resourceGroupName
-                $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
-                if (!$rg) {
-                    if ($ArmWhatIfMode) {
-                        # Creating the resource group is a real change, and what-if cannot run against a missing resource group
-                        Write-Warning "Resource group '$resourceGroupName' does not exist - skipping what-if for '$name'. It would be created by a real deployment."
-                        continue nextArmDeployment      # a plain 'continue' would only exit the enclosing switch
-                    }
-                    New-AzResourceGroup -Name $resourceGroupName -Location $location
-                }
-                New-AzResourceGroupDeployment @deploymentParams -ResourceGroupName $resourceGroupName |
-                    Tee-Object -Variable deploymentResult
-            }
-            'subscription' {
-                New-AzSubscriptionDeployment @deploymentParams |
-                    Tee-Object -Variable deploymentResult
-            }
-            'managementGroup' {
-                $managementGroupId = Resolve-Value $armDeployment.managementGroupId
-                New-AzManagementGroupDeployment @deploymentParams -ManagementGroupId $managementGroupId |
-                    Tee-Object -Variable deploymentResult
-            }
-            'tenant' {
-                New-AzTenantDeployment @deploymentParams |
-                    Tee-Object -Variable deploymentResult
-            }
-        }
+        $deploymentResult = Invoke-ArmDeployment -ArmDeployment $armDeployment `
+                                                 -DeploymentConfig $script:DeploymentConfig `
+                                                 -WhatIfMode:$ArmWhatIfMode `
+                                                 -ContinueOnWhatIfError:$ArmWhatIfContinueOnError
 
         if ($ArmWhatIfMode) {
             # What-if does not produce a deployment result, so there are no outputs to process
             continue
         }
+
+        Write-Build White ($deploymentResult | Out-String)
 
         if ($deploymentResult.ProvisioningState -eq 'Succeeded') {
             if ($deploymentResult.Outputs) {
@@ -152,7 +54,8 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
 # Synopsis: Checks that a suitable version of Bicep CLI is available, installing it via Azure CLI when missing.
 task ensureBicepVersion -If { !$SkipEnsureBicepVersion } {
 
-    $deploymentRequiresBicep = $RequiredArmDeployments | Where-Object { $_.templatePath.EndsWith('.bicep')}
+    # A '.bicepparam' file also needs the Bicep CLI
+    $deploymentRequiresBicep = $RequiredArmDeployments | Where-Object { $_.templatePath -match '\.bicep(param)?$' }
 
     if ($deploymentRequiresBicep -or $ForceBicepVersionCheck) {
         if ($MinimumBicepVersion) {
