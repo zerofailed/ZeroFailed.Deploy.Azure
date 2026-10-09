@@ -50,10 +50,11 @@ This group contains features for managing Azure Resource Manager deployments (us
 | Name                      | Default Value | ENV Override                          | Description                                                                                                                                                                                         |
 | ------------------------- | ------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ArmWhatIfMode`           | $false        | `ZF_DEPLOY_ARM_WHATIF_MODE`           | When true, ARM deployments are run in 'what-if' mode, which reports the changes that would be made without deploying anything. Applies to all configured ARM deployments. See [note below](#armwhatifmode). |
+| `ArmWhatIfContinueOnError` | $false       | `ZF_DEPLOY_ARM_WHATIF_CONTINUE_ON_ERROR` | When true, and `ArmWhatIfMode` is true, a failed what-if operation is reported as a warning and the remaining deployments continue. Configuration errors still fail the build. |
 | `ForceBicepVersionCheck`  |               | `ZF_DEPLOY_FORCE_BICEP_VERSION_CHECK` | When true, the available Bicep CLI version will be checked, even if the ARM deployment does not reference a Bicep template.                                                                         |
 | `MinimumBicepVersion`     |               | `ZF_DEPLOY_MINIMUM_BICEP_VERSION`     | Specifies the minimum version of the Bicep CLI that should be available. If not found, the latest version will be installed.                                                                        |
 | `RequiredArmDeployments`  | @()           |                                       | Details the ARM deployments that need to be run for the deployment process. See [note below](#requiredarmdeployments) for configuration syntax.                                                     |
-| `RequiredBicepVersion`    |               | `ZF_DEPLOY_REQUIRED_BICEP_VERSION`    | Ensures a specific version of the Bicep CLI is available. If not found, the required version will be installed.                                                                        |
+| `RequiredBicepVersion`    |               | `ZF_DEPLOY_REQUIRED_BICEP_VERSION`    | Ensures a specific version of the Bicep CLI is available. If not found, the required version will be installed. The latest release is only looked up (via the GitHub API) for `latest`, a minimum version, or a missing installation, so a pinned version that is already installed needs no network access. |
 | `SkipArmDeployments`      | $false        | `ZF_DEPLOY_SKIP_ARM_DEPLOYMENTS`      | When true, skips any configured ARM deployments.                                                                                                                                                    |
 | `SkipEnsureBicepVersion`  | $false        | `ZF_DEPLOY_SKIP_ENSURE_BICEP_VERSION` | When true, the available Bicep CLI version will not be validated, or installed if missing.                                                                                                                     |
 | `ZF_ArmDeploymentOutputs` | @{}           | `ZF_DEPLOY_ARM_DEPLOYMENT_OUTPUTS`    | A script-scoped variable containing the outputs from any ARM deployments that will be available to the rest of the deployment process. Available for overriding as part of niche testing scenarios. |
@@ -66,6 +67,8 @@ When enabled:
 - Each deployment is run with `-WhatIf`, so the predicted changes are written to the build log and nothing is deployed.
 - Resource groups are not created. If a resource group does not exist, a warning is shown and what-if is skipped for that deployment.
 - ARM deployment outputs are not produced, so `ZF_ArmDeploymentOutputs` is not populated. Later tasks that depend on those outputs may fail or need to be skipped.
+- A failed what-if operation fails the build, unless `ArmWhatIfContinueOnError` is true.
+- Only the ARM deployments run in what-if mode. Other tasks still make real changes. For example, `enableTemporaryNetworkAccess` still adds its firewall rules when `EnableTemporaryNetworkAccess` is true, so set that property to false for a what-if run that must change nothing.
 
 #### RequiredArmDeployments
 
@@ -100,11 +103,17 @@ The optional `scope` setting controls the ARM deployment scope. When omitted it 
 | `scope`           | Required settings                                | Deployment cmdlet                                            |
 | ----------------- | ------------------------------------------------ | ------------------------------------------------------------ |
 | `resourceGroup`   | `templatePath`, `resourceGroupName`, `location`  | `New-AzResourceGroupDeployment` (creates the resource group if it does not exist) |
-| `subscription`    | `templatePath`, `location`                       | `New-AzSubscriptionDeployment` (targets the current Azure context's subscription) |
+| `subscription`    | `templatePath`, `location`                       | `New-AzSubscriptionDeployment` (targets the current Azure context's subscription, or `subscriptionId`) |
 | `managementGroup` | `templatePath`, `location`, `managementGroupId`  | `New-AzManagementGroupDeployment`                            |
 | `tenant`          | `templatePath`, `location`                       | `New-AzTenantDeployment`                                     |
 
-For all scopes other than `resourceGroup`, `location` is where the deployment metadata is stored. The `scope` and `managementGroupId` settings support the scriptblock syntax for lazy-evaluation. For example:
+For all scopes other than `resourceGroup`, `location` is where the deployment metadata is stored. At `resourceGroup` scope, `location` is used only when the resource group is created. The `scope`, `managementGroupId` and `subscriptionId` settings support the scriptblock syntax for lazy-evaluation.
+
+The optional `subscriptionId` setting, at `resourceGroup` and `subscription` scope, runs that deployment in the specified subscription. The Azure context is switched before anything else for that deployment, and the previous context is restored afterwards, also when the deployment fails. Without it, the deployment uses the current Azure context.
+
+A `templatePath` that ends `.bicepparam` is a [Bicep parameters file](https://learn.microsoft.com/azure/azure-resource-manager/bicep/parameter-files). It is passed via `-TemplateParameterFile`, and its `using` statement names the template. The environment configuration settings are not passed as template parameters, and `additionalParameters` are not supported: set the values in the `.bicepparam` file instead. This requires Azure PowerShell 10.4.0 or later and Bicep CLI 0.22 or later.
+
+For example:
 
 ```powershell
 $RequiredArmDeployments = @(
@@ -119,6 +128,12 @@ $RequiredArmDeployments = @(
         managementGroupId = { $deploymentConfig.managementGroupId }
         location = 'uksouth'
     }
+    @{
+        scope = 'subscription'
+        templatePath = 'main.dev.bicepparam'                # 'using' names the template
+        subscriptionId = { $deploymentConfig.devSubscriptionId }
+        location = 'uksouth'
+    }
 )
 ```
 
@@ -127,7 +142,7 @@ $RequiredArmDeployments = @(
 | Name                 | Description                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `deployArmTemplates` | Runs the specified ARM deployments.                                                                                          |
-| `ensureBicepVersion` | Checks that a suitable version of Bicep CLI is available, installing it via Azure CLI when missing or the incorrect version. |
+| `ensureBicepVersion` | Checks that a suitable version of Bicep CLI is available, installing it via Azure CLI when missing or the incorrect version. Runs when a deployment uses a `.bicep` or `.bicepparam` file. |
 
 ## Monitoring
 
