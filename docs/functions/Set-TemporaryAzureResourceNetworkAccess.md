@@ -2,9 +2,9 @@
 document type: cmdlet
 external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
-Locale: en-GB
+Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 11/14/2025
+ms.date: 09/22/2026
 PlatyPS schema version: 2024-05-01
 title: Set-TemporaryAzureResourceNetworkAccess
 ---
@@ -99,9 +99,6 @@ HelpMessage: ''
 
 ### -Revoke
 
-When true, any existing temporary network access rules for the specified resource will be removed.
-No
-rules will be added.
 When true, any existing temporary network access rules for the specified resource will be removed.
 No
 rules will be added.
