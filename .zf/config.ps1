@@ -26,8 +26,9 @@ $PSMarkdownDocsOutputPath = 'docs/functions'
 $PSMarkdownDocsFlattenOutputPath = $true
 $PSMarkdownDocsIncludeModulePage = $false
 
-# A unit test requires this module for mocking purposes
+# Unit tests require these modules for mocking purposes
 $RequiredPowerShellModules = @{
+    'Az.Accounts' = @{}
     'Az.KeyVault' = @{}
 }
 
