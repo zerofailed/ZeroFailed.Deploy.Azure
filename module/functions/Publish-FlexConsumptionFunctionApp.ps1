@@ -8,17 +8,18 @@ function Publish-FlexConsumptionFunctionApp {
     Deploys a ZIP package to a Function App on the Flex Consumption plan, and waits for the deployment to finish.
 
     .DESCRIPTION
-    Uploads the package to the OneDeploy endpoint ('/api/publish') of the app's source control manager (SCM) site.
-    Then the function checks the deployment status about once a second until the deployment finishes.
+    The function uploads the package to the OneDeploy endpoint (`/api/publish`) of the app's source control manager (SCM) site.
+    Then it checks the status of the deployment about once a second, until the deployment finishes.
 
-    The function reads the status from the response body and ignores the HTTP status code. The Flex Consumption plan
-    returns HTTP 200 while a deployment runs, and also when it fails.
+    The function reads the status from the response body, and ignores the HTTP status code.
+    The Flex Consumption plan returns HTTP 200 while a deployment runs, and also after a deployment fails.
 
-    The function fails when the deployment fails, is cancelled, conflicts with another deployment or only partly
-    succeeds. It also fails when the deployment does not finish within the timeout.
+    The function fails in these cases:
 
-    The function signs in to the SCM site with an Azure Resource Manager token from the current Azure PowerShell
-    context.
+    - The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
+    - The deployment does not finish within `-TimeoutSeconds`.
+
+    The error message contains the status text of the deployment and a link to its log.
 
     .PARAMETER ResourceGroupName
     The resource group of the Function App.
@@ -30,21 +31,31 @@ function Publish-FlexConsumptionFunctionApp {
     The path to the ZIP package to deploy.
 
     .PARAMETER RemoteBuild
-    When set, the platform builds the package after the upload, for example to install Python packages. Do not set
-    it for packages that are ready to run, such as .NET apps.
+    When set, the platform builds the package after the upload, for example to install the packages of a Python app.
+    Do not set it for packages that are ready to run, such as .NET apps.
 
     .PARAMETER TimeoutSeconds
-    The maximum time, in seconds, to wait for the deployment to finish. The default is 600.
+    The maximum time, in seconds, to wait for the deployment to finish.
+    The default is 600.
 
     .EXAMPLE
+    ```powershell
     Publish-FlexConsumptionFunctionApp -ResourceGroupName 'my-rg' -Name 'my-func-app' -ArchivePath './app.zip'
+    ```
 
     Deploys a package that is ready to run, such as a .NET app.
 
     .EXAMPLE
+    ```powershell
     Publish-FlexConsumptionFunctionApp -ResourceGroupName 'my-rg' -Name 'my-python-app' -ArchivePath './app.zip' -RemoteBuild -TimeoutSeconds 1200
+    ```
 
-    Deploys a Python app, which the platform builds after the upload, and waits up to 20 minutes.
+    Deploys a Python app, which the platform builds after the upload, and waits up to 20 minutes for the deployment to finish.
+
+    .NOTES
+    This function requires the Az.Accounts module and an active Azure PowerShell connection.
+    It signs in to the SCM site with an Azure Resource Manager token for the current connection.
+    The deploying identity needs permission to deploy to the app (`Microsoft.Web/sites/publish/Action`), which the Website Contributor, Contributor and Owner roles include.
     #>
     [CmdletBinding()]
     [OutputType([System.Void])]

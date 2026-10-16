@@ -8,9 +8,9 @@ function Test-FlexConsumptionFunctionApp {
     Checks whether a Function App runs on the Flex Consumption plan.
 
     .DESCRIPTION
-    Reads the site's 'properties.sku' value from Azure Resource Manager. The function returns $true when the value is
-    'FlexConsumption', which is the same check that the Azure CLI uses. For apps on other plans, and for App Service
-    apps, the function returns $false.
+    The function reads the `properties.sku` value of the app's site resource from Azure Resource Manager.
+    It returns `$true` when the value is `FlexConsumption`, which is the check that the Azure CLI uses.
+    For apps on other plans, and for App Service apps, it returns `$false`.
 
     .PARAMETER ResourceGroupName
     The resource group of the app.
@@ -19,7 +19,15 @@ function Test-FlexConsumptionFunctionApp {
     The name of the app.
 
     .EXAMPLE
+    ```powershell
     Test-FlexConsumptionFunctionApp -ResourceGroupName 'my-rg' -Name 'my-func-app'
+    ```
+
+    Returns `$true` if `my-func-app` is a Function App on the Flex Consumption plan.
+
+    .NOTES
+    This function requires the Az.Accounts module and an active Azure PowerShell connection.
+    The identity needs permission to read the app's site resource, which the Reader role includes.
     #>
     [CmdletBinding()]
     [OutputType([bool])]

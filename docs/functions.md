@@ -10,6 +10,8 @@ This document provides a complete reference for all exported functions in the Ze
 | [Convert-UnicodeToEscapeHex](functions/Convert-UnicodeToEscapeHex.md)                 | Converts Unicode characters in a JSON string to their escaped hexadecimal representation, useful when passing unicode strings to REST APIs. |
 | [Assert-BicepCliVersionInPath](functions/Assert-BicepCliVersionInPath.md)             | Checks that the specified version of the Bicep CLI is available via the PATH.                                                               |
 | [Assert-PrivateEndpointConnectionApproval](functions/Assert-PrivateEndpointConnectionApproval.md) | Ensures that a private endpoint connection to an Azure resource is approved, e.g. one requested by a Fabric or Synapse managed private endpoint. |
+| [Publish-FlexConsumptionFunctionApp](functions/Publish-FlexConsumptionFunctionApp.md) | Deploys a ZIP package to a Function App on the Flex Consumption plan, and waits for the deployment to finish. |
+| [Test-FlexConsumptionFunctionApp](functions/Test-FlexConsumptionFunctionApp.md) | Checks whether a Function App runs on the Flex Consumption plan. |
 
 ---
 
