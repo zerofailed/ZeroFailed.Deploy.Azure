@@ -31,13 +31,17 @@ Publish-FlexConsumptionFunctionApp [-ResourceGroupName] <string> [-Name] <string
 The function uploads the package to the OneDeploy endpoint (`/api/publish`) of the app's source control manager (SCM) site.
 Then it checks the status of the deployment about once a second, until the deployment finishes.
 
-The function reads the status from the response body, and ignores the HTTP status code.
+The function reads the status from the response body, not from the HTTP status code.
 The Flex Consumption plan returns HTTP 200 while a deployment runs, and also after a deployment fails.
+
+The function retries requests that the SCM site blocks with HTTP 403, for up to 60 seconds.
+Changes to the SCM site's access restrictions, such as a temporary rule for this machine, can take more than 30 seconds to apply.
 
 The function fails in these cases:
 
 - The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
 - The deployment does not finish within `-TimeoutSeconds`.
+- The SCM site blocks the requests of the function for 60 seconds.
 
 The error message contains the status text of the deployment and a link to its log.
 

@@ -11,13 +11,17 @@ function Publish-FlexConsumptionFunctionApp {
     The function uploads the package to the OneDeploy endpoint (`/api/publish`) of the app's source control manager (SCM) site.
     Then it checks the status of the deployment about once a second, until the deployment finishes.
 
-    The function reads the status from the response body, and ignores the HTTP status code.
+    The function reads the status from the response body, not from the HTTP status code.
     The Flex Consumption plan returns HTTP 200 while a deployment runs, and also after a deployment fails.
+
+    The function retries requests that the SCM site blocks with HTTP 403, for up to 60 seconds.
+    Changes to the SCM site's access restrictions, such as a temporary rule for this machine, can take more than 30 seconds to apply.
 
     The function fails in these cases:
 
     - The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
     - The deployment does not finish within `-TimeoutSeconds`.
+    - The SCM site blocks the requests of the function for 60 seconds.
 
     The error message contains the status text of the deployment and a link to its log.
 
@@ -95,6 +99,12 @@ function Publish-FlexConsumptionFunctionApp {
     # The status endpoint can return HTTP 404 while it creates the deployment record
     $maxInitialNotFoundResponses = 10
 
+    # The SCM site returns HTTP 403 when its access restrictions block a request. A change to the access restrictions,
+    # such as a temporary rule for this machine, can take more than 30 seconds to apply. During that time, the SCM site
+    # can block some requests and allow others. So the function retries these requests for up to 60 seconds.
+    $forbiddenRetrySeconds = 60
+    $uploadRetryIntervalSeconds = 5
+
     $site = _getWebAppSiteResource -ResourceGroupName $ResourceGroupName -Name $Name
     if ($site.properties.sku -ne 'FlexConsumption') {
         throw "The Function App '$Name' is not on the Flex Consumption plan. Its SKU is '$($site.properties.sku)'. Use Publish-AzWebApp to deploy apps on other plans."
@@ -119,12 +129,30 @@ function Publish-FlexConsumptionFunctionApp {
         $publishUri += '?RemoteBuild=true'
     }
     Write-Host "Uploading the package '$ArchivePath' to '$publishUri'"
-    $uploadResponse = Invoke-WebRequest -Method Post `
-                                        -Uri $publishUri `
-                                        -InFile $ArchivePath `
-                                        -ContentType 'application/zip' `
-                                        -SkipHttpErrorCheck `
-                                        @authSplat
+    $uploadStart = Get-Date
+    $uploadRetried = $false
+    while ($true) {
+        $uploadResponse = Invoke-WebRequest -Method Post `
+                                            -Uri $publishUri `
+                                            -InFile $ArchivePath `
+                                            -ContentType 'application/zip' `
+                                            -SkipHttpErrorCheck `
+                                            @authSplat
+        if ($uploadResponse.StatusCode -ne 403) {
+            break
+        }
+        if (((Get-Date) - $uploadStart).TotalSeconds -ge $forbiddenRetrySeconds) {
+            throw "The upload to '$publishUri' failed with HTTP 403 for $forbiddenRetrySeconds seconds. Check that the SCM site's access restrictions allow this machine. Check that the deploying identity can deploy to the app. Response: $($uploadResponse.Content)"
+        }
+        if (!$uploadRetried) {
+            Write-Host "The upload returned HTTP 403, so the function retries every $uploadRetryIntervalSeconds seconds for up to $forbiddenRetrySeconds seconds. Changes to the SCM site's access restrictions can take more than 30 seconds to apply."
+            $uploadRetried = $true
+        }
+        else {
+            Write-Verbose "The upload returned HTTP 403 again. The function retries in $uploadRetryIntervalSeconds seconds."
+        }
+        Start-Sleep -Seconds $uploadRetryIntervalSeconds
+    }
     if ($uploadResponse.StatusCode -ne 202) {
         throw "The upload to '$publishUri' failed with HTTP $($uploadResponse.StatusCode). Response: $($uploadResponse.Content)"
     }
@@ -143,6 +171,7 @@ function Publish-FlexConsumptionFunctionApp {
     $deploymentUri = "https://$scmHostName/api/deployments/$deploymentId"
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $notFoundCount = 0
+    $forbiddenSince = $null
     $inProgressSeen = $false
     $lastStatus = $null
     $lastStatusText = $null
@@ -152,7 +181,17 @@ function Publish-FlexConsumptionFunctionApp {
     while ($true) {
         $statusResponse = Invoke-WebRequest -Method Get -Uri $deploymentUri -SkipHttpErrorCheck @authSplat
 
-        if ($statusResponse.StatusCode -eq 404) {
+        if ($statusResponse.StatusCode -eq 403) {
+            if ($null -eq $forbiddenSince) {
+                $forbiddenSince = Get-Date
+                Write-Host "The status endpoint returned HTTP 403, so the function keeps checking for up to $forbiddenRetrySeconds seconds. Changes to the SCM site's access restrictions can take more than 30 seconds to apply."
+            }
+            elseif (((Get-Date) - $forbiddenSince).TotalSeconds -ge $forbiddenRetrySeconds) {
+                throw "The status endpoint '$deploymentUri' returned HTTP 403 for $forbiddenRetrySeconds seconds. Check that the SCM site's access restrictions allow this machine. Response: $($statusResponse.Content)"
+            }
+        }
+        elseif ($statusResponse.StatusCode -eq 404) {
+            $forbiddenSince = $null
             if ($inProgressSeen) {
                 # After a deployment finishes, the status endpoint can return HTTP 404 (Azure/azure-dev#3658).
                 # The Azure CLI and the Azure Developer CLI treat this as success, so do the same.
@@ -167,6 +206,7 @@ function Publish-FlexConsumptionFunctionApp {
             Write-Verbose "Deployment '$deploymentId' has no status record yet ($notFoundCount of $maxInitialNotFoundResponses attempts)"
         }
         else {
+            $forbiddenSince = $null
             $deployment = $null
             try {
                 $deployment = $statusResponse.Content | ConvertFrom-Json -ErrorAction Stop

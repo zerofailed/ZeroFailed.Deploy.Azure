@@ -47,12 +47,13 @@ The `deployAppServiceZipPackages` task checks the plan of each app before it dep
 
 - The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
 - The deployment does not finish within `AppServiceFlexDeploymentTimeoutSeconds`. The default is 600 seconds.
+- The app's source control manager (SCM) site blocks the upload or the status checks for 60 seconds.
 
 The error message contains the status text of the deployment and a link to its log.
 
 If the platform must build the package after the upload, set `remoteBuild = $true`. For example, a Python app needs a remote build to install its packages. Do not set `remoteBuild` for packages that are ready to run, such as .NET apps. For apps on other plans, the task ignores `remoteBuild` and writes a warning.
 
-`AppServiceRequiresTemporaryNetworkAccess` works for Flex Consumption apps in the same way as for other apps.
+`AppServiceRequiresTemporaryNetworkAccess` works for Flex Consumption apps in the same way as for other apps. A change to the access restrictions of an SCM site can take more than 30 seconds to apply. During that time, the SCM site can block some requests and allow others. So `Publish-FlexConsumptionFunctionApp` retries requests that the SCM site blocks with HTTP 403, for up to 60 seconds.
 
 To provision a Flex Consumption app, use `deployArmTemplates` as usual. The plan and the app are ordinary Bicep or ARM resources, so provisioning needs no extra configuration.
 

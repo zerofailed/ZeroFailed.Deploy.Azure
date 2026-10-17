@@ -76,6 +76,15 @@ BeforeAll {
         $script:statusResponses = [System.Collections.Generic.Queue[object]]::new()
         $Responses | ForEach-Object { $script:statusResponses.Enqueue($_) }
     }
+
+    # The upload endpoint returns these responses in order. The last one repeats.
+    function Set-UploadResponses {
+        param (
+            [object[]] $Responses
+        )
+        $script:uploadResponses = [System.Collections.Generic.Queue[object]]::new()
+        $Responses | ForEach-Object { $script:uploadResponses.Enqueue($_) }
+    }
 }
 
 Describe 'Publish-FlexConsumptionFunctionApp' {
@@ -91,11 +100,14 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
         Mock Get-AzAccessToken {
             [pscustomobject]@{ Token = (ConvertTo-SecureString -String 'mock-token' -AsPlainText -Force) }
         }
-        Mock Invoke-WebRequest { New-MockResponse -StatusCode 202 -Content '"dep-123"' } -ParameterFilter { $Method -eq 'Post' }
+        Mock Invoke-WebRequest {
+            if ($script:uploadResponses.Count -gt 1) { $script:uploadResponses.Dequeue() } else { $script:uploadResponses.Peek() }
+        } -ParameterFilter { $Method -eq 'Post' }
         Mock Invoke-WebRequest {
             if ($script:statusResponses.Count -gt 1) { $script:statusResponses.Dequeue() } else { $script:statusResponses.Peek() }
         } -ParameterFilter { $Method -eq 'Get' }
 
+        Set-UploadResponses @(New-MockResponse -StatusCode 202 -Content '"dep-123"')
         Set-StatusResponses @(New-StatusResponse -Status 4)
     }
 
@@ -127,7 +139,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
         It 'should post the package to the SCM site of the app' {
             Publish-FlexConsumptionFunctionApp @splat
 
-            Should -Invoke Invoke-WebRequest -Times 1 -ParameterFilter {
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter {
                 $Method -eq 'Post' -and
                 $Uri -eq $publishUri -and
                 $InFile -eq $archivePath -and
@@ -140,7 +152,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
         It 'should request a remote build when RemoteBuild is set' {
             Publish-FlexConsumptionFunctionApp @splat -RemoteBuild
 
-            Should -Invoke Invoke-WebRequest -Times 1 -ParameterFilter {
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter {
                 $Method -eq 'Post' -and $Uri -eq "$($publishUri)?RemoteBuild=true"
             }
         }
@@ -155,6 +167,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
             { Publish-FlexConsumptionFunctionApp @splat } |
                 Should -Throw "*upload to '$publishUri' failed with HTTP $StatusCode*upload error*"
 
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Post' }
             Should -Not -Invoke Invoke-WebRequest -ParameterFilter { $Method -eq 'Get' }
         }
 
@@ -177,7 +190,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
         It 'should return as soon as the status is Success' {
             Publish-FlexConsumptionFunctionApp @splat
 
-            Should -Invoke Invoke-WebRequest -Times 1 -ParameterFilter { $Method -eq 'Get' -and $Uri -eq $deploymentUri }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $Uri -eq $deploymentUri }
             Should -Not -Invoke Start-Sleep
         }
 
@@ -191,8 +204,8 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
 
             Publish-FlexConsumptionFunctionApp @splat
 
-            Should -Invoke Invoke-WebRequest -Times 4 -ParameterFilter { $Method -eq 'Get' -and $Uri -eq $deploymentUri }
-            Should -Invoke Start-Sleep -Times 3 -ParameterFilter { $Seconds -eq 1 }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 4 -ParameterFilter { $Method -eq 'Get' -and $Uri -eq $deploymentUri }
+            Should -Invoke Start-Sleep -Exactly -Times 3 -ParameterFilter { $Seconds -eq 1 }
         }
 
         It 'should read the status from the body, whatever the HTTP status code' {
@@ -204,7 +217,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
 
             Publish-FlexConsumptionFunctionApp @splat
 
-            Should -Invoke Invoke-WebRequest -Times 3 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 3 -ParameterFilter { $Method -eq 'Get' }
         }
 
         It 'should log each status change once' {
@@ -218,9 +231,9 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
 
             Publish-FlexConsumptionFunctionApp @splat
 
-            Should -Invoke Write-Host -Times 1 -ParameterFilter { $Object -eq "Deployment 'dep-123' status: Building" }
-            Should -Invoke Write-Host -Times 1 -ParameterFilter { $Object -eq "Deployment 'dep-123' status: Deploying (Copying files)" }
-            Should -Invoke Write-Host -Times 1 -ParameterFilter { $Object -eq "Deployment 'dep-123' succeeded" }
+            Should -Invoke Write-Host -Exactly -Times 1 -ParameterFilter { $Object -eq "Deployment 'dep-123' status: Building" }
+            Should -Invoke Write-Host -Exactly -Times 1 -ParameterFilter { $Object -eq "Deployment 'dep-123' status: Deploying (Copying files)" }
+            Should -Invoke Write-Host -Exactly -Times 1 -ParameterFilter { $Object -eq "Deployment 'dep-123' succeeded" }
         }
     }
 
@@ -261,7 +274,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
                 Should -Throw "Deployment 'dep-123' to the Function App 'my-func-app' did not finish within 5 seconds. Its last status was 'Building'. Status text: 'Building the app'. To wait longer, increase the timeout."
 
             # Polls at 0, 1, 2, 3, 4 and 5 seconds on the simulated clock
-            Should -Invoke Invoke-WebRequest -Times 6 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 6 -ParameterFilter { $Method -eq 'Get' }
         }
     }
 
@@ -275,7 +288,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
 
             Publish-FlexConsumptionFunctionApp @splat
 
-            Should -Invoke Invoke-WebRequest -Times 3 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 3 -ParameterFilter { $Method -eq 'Get' }
         }
 
         It 'should throw an error after more than 10 HTTP 404 responses in a row at the start' {
@@ -284,7 +297,7 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
             { Publish-FlexConsumptionFunctionApp @splat } |
                 Should -Throw "*'$deploymentUri' returned HTTP 404 11 times in a row*"
 
-            Should -Invoke Invoke-WebRequest -Times 11 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 11 -ParameterFilter { $Method -eq 'Get' }
         }
 
         It 'should treat HTTP 404 after an in-progress status as success' {
@@ -295,8 +308,76 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
 
             { Publish-FlexConsumptionFunctionApp @splat } | Should -Not -Throw
 
-            Should -Invoke Invoke-WebRequest -Times 2 -ParameterFilter { $Method -eq 'Get' }
-            Should -Invoke Write-Host -Times 1 -ParameterFilter { $Object -like "Deployment 'dep-123' finished.*" }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 2 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Write-Host -Exactly -Times 1 -ParameterFilter { $Object -like "Deployment 'dep-123' finished.*" }
+        }
+    }
+
+    # After a change to the access restrictions of the SCM site, the SCM site can block some requests and allow others
+    Context 'When the SCM site returns HTTP 403' {
+        It 'should retry the upload every 5 seconds' {
+            Set-UploadResponses @(
+                New-MockResponse -StatusCode 403 -Content 'blocked'
+                New-MockResponse -StatusCode 403 -Content 'blocked'
+                New-MockResponse -StatusCode 202 -Content '"dep-123"'
+            )
+
+            Publish-FlexConsumptionFunctionApp @splat
+
+            Should -Invoke Invoke-WebRequest -Exactly -Times 3 -ParameterFilter { $Method -eq 'Post' }
+            Should -Invoke Start-Sleep -Exactly -Times 2 -ParameterFilter { $Seconds -eq 5 }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Write-Host -Exactly -Times 1 -ParameterFilter { $Object -like 'The upload returned HTTP 403*' }
+        }
+
+        It 'should throw an error when the upload returns HTTP 403 for 60 seconds' {
+            Set-UploadResponses @(New-MockResponse -StatusCode 403 -Content 'blocked')
+
+            { Publish-FlexConsumptionFunctionApp @splat } |
+                Should -Throw "*upload to '$publishUri' failed with HTTP 403 for 60 seconds*access restrictions*blocked*"
+
+            # Uploads at 0, 5, 10 ... 60 seconds on the simulated clock
+            Should -Invoke Invoke-WebRequest -Exactly -Times 13 -ParameterFilter { $Method -eq 'Post' }
+            Should -Not -Invoke Invoke-WebRequest -ParameterFilter { $Method -eq 'Get' }
+        }
+
+        It 'should keep checking the status of the deployment' {
+            Set-StatusResponses @(
+                New-StatusResponse -Status 1
+                New-MockResponse -StatusCode 403 -Content 'blocked'
+                New-MockResponse -StatusCode 403 -Content 'blocked'
+                New-StatusResponse -Status 4
+            )
+
+            Publish-FlexConsumptionFunctionApp @splat
+
+            Should -Invoke Invoke-WebRequest -Exactly -Times 4 -ParameterFilter { $Method -eq 'Get' }
+        }
+
+        It 'should throw an error when the status endpoint returns HTTP 403 for 60 seconds' {
+            Set-StatusResponses @(
+                New-StatusResponse -Status 1
+                New-MockResponse -StatusCode 403 -Content 'blocked'
+            )
+
+            { Publish-FlexConsumptionFunctionApp @splat } |
+                Should -Throw "*'$deploymentUri' returned HTTP 403 for 60 seconds*access restrictions*"
+
+            # The first HTTP 403 is at 1 second on the simulated clock, and the last is at 61 seconds
+            Should -Invoke Invoke-WebRequest -Exactly -Times 62 -ParameterFilter { $Method -eq 'Get' }
+        }
+
+        It 'should measure the 60 seconds from the start of each run of HTTP 403 responses' {
+            Set-StatusResponses @(
+                (1..50 | ForEach-Object { New-MockResponse -StatusCode 403 -Content 'blocked' })
+                New-StatusResponse -Status 1
+                (1..50 | ForEach-Object { New-MockResponse -StatusCode 403 -Content 'blocked' })
+                New-StatusResponse -Status 4
+            )
+
+            { Publish-FlexConsumptionFunctionApp @splat } | Should -Not -Throw
+
+            Should -Invoke Invoke-WebRequest -Exactly -Times 102 -ParameterFilter { $Method -eq 'Get' }
         }
     }
 }
