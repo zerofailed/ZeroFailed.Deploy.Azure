@@ -33,7 +33,7 @@ Describe '_getWebAppSiteResource' {
         It 'should request the site resource with a recent API version' {
             _getWebAppSiteResource -ResourceGroupName 'my-rg' -Name 'my-func-app'
 
-            Should -Invoke Invoke-AzRestMethod -Times 1 -ParameterFilter {
+            Should -Invoke Invoke-AzRestMethod -Exactly -Times 1 -ParameterFilter {
                 $Method -eq 'GET' -and
                 $ResourceGroupName -eq 'my-rg' -and
                 $ResourceProviderName -eq 'Microsoft.Web' -and

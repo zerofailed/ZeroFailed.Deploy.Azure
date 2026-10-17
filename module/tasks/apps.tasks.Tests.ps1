@@ -96,8 +96,8 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Test-FlexConsumptionFunctionApp -Times 1 -ParameterFilter { $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' }
-            Should -Invoke Publish-FlexConsumptionFunctionApp -Times 1 -ParameterFilter {
+            Should -Invoke Test-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' }
+            Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter {
                 $ResourceGroupName -eq 'my-rg' -and
                 $Name -eq 'my-app' -and
                 $ArchivePath -eq 'app.zip' -and
@@ -116,7 +116,7 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Publish-FlexConsumptionFunctionApp -Times 1 -ParameterFilter { $RemoteBuild -eq $true }
+            Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $RemoteBuild -eq $true }
         }
 
         It "should not request a remote build when 'remoteBuild' is <_>" -ForEach @(
@@ -127,7 +127,7 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Publish-FlexConsumptionFunctionApp -Times 1 -ParameterFilter { $RemoteBuild -eq $false }
+            Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $RemoteBuild -eq $false }
         }
 
         It 'should pass the configured timeout' {
@@ -136,7 +136,7 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Publish-FlexConsumptionFunctionApp -Times 1 -ParameterFilter { $TimeoutSeconds -eq 1200 }
+            Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $TimeoutSeconds -eq 1200 }
         }
     }
 
@@ -146,7 +146,7 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Publish-AzWebApp -Times 1 -ParameterFilter {
+            Should -Invoke Publish-AzWebApp -Exactly -Times 1 -ParameterFilter {
                 $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' -and $ArchivePath -eq 'app.zip'
             }
             Should -Not -Invoke Publish-FlexConsumptionFunctionApp
@@ -158,8 +158,8 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like "*'my-app'*ignores its 'remoteBuild' setting*" }
-            Should -Invoke Publish-AzWebApp -Times 1
+            Should -Invoke Write-Warning -Exactly -Times 1 -ParameterFilter { $Message -like "*'my-app'*ignores its 'remoteBuild' setting*" }
+            Should -Invoke Publish-AzWebApp -Exactly -Times 1
         }
     }
 
@@ -174,8 +174,8 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Test-FlexConsumptionFunctionApp -Times 1 -ParameterFilter { $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' }
-            Should -Invoke Publish-FlexConsumptionFunctionApp -Times 1 -ParameterFilter {
+            Should -Invoke Test-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' }
+            Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter {
                 $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' -and $ArchivePath -eq 'lazy.zip'
             }
         }
@@ -189,7 +189,7 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Publish-AzWebApp -Times 1 -ParameterFilter {
+            Should -Invoke Publish-AzWebApp -Exactly -Times 1 -ParameterFilter {
                 $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' -and $ArchivePath -eq 'lazy.zip'
             }
         }
@@ -205,8 +205,8 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Publish-FlexConsumptionFunctionApp -Times 1 -ParameterFilter { $Name -eq 'flex-app' -and $ArchivePath -eq 'flex.zip' }
-            Should -Invoke Publish-AzWebApp -Times 1 -ParameterFilter { $Name -eq 'web-app' -and $ArchivePath -eq 'web.zip' }
+            Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $Name -eq 'flex-app' -and $ArchivePath -eq 'flex.zip' }
+            Should -Invoke Publish-AzWebApp -Exactly -Times 1 -ParameterFilter { $Name -eq 'web-app' -and $ArchivePath -eq 'web.zip' }
         }
     }
 
@@ -221,10 +221,10 @@ Describe 'deployAppServiceZipPackages' {
 
             & $taskAction
 
-            Should -Invoke Set-TemporaryAzureResourceNetworkAccess -Times 1 -ParameterFilter {
+            Should -Invoke Set-TemporaryAzureResourceNetworkAccess -Exactly -Times 1 -ParameterFilter {
                 $ResourceType -eq 'WebAppScm' -and $ResourceGroupName -eq 'my-rg' -and $ResourceName -eq 'my-app' -and $Wait
             }
-            Should -Invoke Set-TemporaryAzureResourceNetworkAccess -Times 1 -ParameterFilter {
+            Should -Invoke Set-TemporaryAzureResourceNetworkAccess -Exactly -Times 1 -ParameterFilter {
                 $ResourceType -eq 'WebAppScm' -and $ResourceGroupName -eq 'my-rg' -and $ResourceName -eq 'my-app' -and $Revoke
             }
         }
@@ -235,7 +235,7 @@ Describe 'deployAppServiceZipPackages' {
 
             { & $taskAction } | Should -Throw 'Deployment failed'
 
-            Should -Invoke Set-TemporaryAzureResourceNetworkAccess -Times 1 -ParameterFilter { $Revoke }
+            Should -Invoke Set-TemporaryAzureResourceNetworkAccess -Exactly -Times 1 -ParameterFilter { $Revoke }
         }
     }
 }

@@ -25,7 +25,7 @@ Describe 'Test-FlexConsumptionFunctionApp' {
 
             Test-FlexConsumptionFunctionApp -ResourceGroupName 'my-rg' -Name 'my-func-app'
 
-            Should -Invoke _getWebAppSiteResource -Times 1 -ParameterFilter {
+            Should -Invoke _getWebAppSiteResource -Exactly -Times 1 -ParameterFilter {
                 $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-func-app'
             }
         }
