@@ -60,7 +60,8 @@ function Set-TemporaryAzureResourceNetworkAccess {
 
     # Set optional values used by some handler implementations
     $script:ruleName = "temp-cicd-rule"
-    $script:ruleDescription = "Temporary rule added by 'Set-TemporaryAzureResourceNetworkAccess'"
+    # App Service rejects access restriction rules with descriptions longer than 64 characters
+    $script:ruleDescription = "Temporary rule added by Set-TemporaryAzureResourceNetworkAccess"
     $script:currentPublicIpAddress = (Invoke-RestMethod https://ifconfig.io).Trim()
     Write-Host "currentPublicIpAddress: $currentPublicIpAddress"
 
