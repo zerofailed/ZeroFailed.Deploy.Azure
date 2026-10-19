@@ -20,11 +20,12 @@ task deployAppServiceZipPackages -If { !$SkipAppServiceAppDeployment -and $null 
         #     remoteBuild = $false      # Optional, only used for Function Apps on the Flex Consumption plan
         # }
 
-        # Support deferred evaluation of configuration values & related properties
-        $appServiceName = Resolve-Value $app.appServiceName
-        $resourceGroupName = Resolve-Value $app.resourceGroupName
-        $zipPackagePath = Resolve-Value $app.zipPackagePath
-        $remoteBuild = [Convert]::ToBoolean((Resolve-Value $app.remoteBuild))
+        # Support deferred evaluation of the configuration object, its values & related properties
+        $resolvedApp = Resolve-Value $app
+        $appServiceName = Resolve-Value $resolvedApp.appServiceName
+        $resourceGroupName = Resolve-Value $resolvedApp.resourceGroupName
+        $zipPackagePath = Resolve-Value $resolvedApp.zipPackagePath
+        $remoteBuild = [Convert]::ToBoolean((Resolve-Value $resolvedApp.remoteBuild))
         $tempNetAccessRequired = Resolve-Value $AppServiceRequiresTemporaryNetworkAccess
 
         if ($tempNetAccessRequired) {
