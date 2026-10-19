@@ -65,6 +65,12 @@ Describe "Set-TemporaryAzureResourceNetworkAccess Tests" {
                 Set-TemporaryAzureResourceNetworkAccess @splat
                 Should -Not -Invoke _waitForRule_$handlerName
             }
+            It "should give the rule a description of 64 characters or fewer" {
+                # App Service rejects access restriction rules with longer descriptions
+                Set-TemporaryAzureResourceNetworkAccess @splat
+                $script:ruleDescription | Should -Not -BeNullOrEmpty
+                $script:ruleDescription.Length | Should -BeLessOrEqual 64
+            }
         }
 
         Context "When adding a temporary firewall rule and waiting for completion" {

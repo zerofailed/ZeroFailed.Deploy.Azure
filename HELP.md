@@ -4,15 +4,16 @@ ZeroFailed.Deploy.Azure - Reference Sheet
 
 ## Application Deployments
 
-This group contains functionality for deploying applications to Azure App Service and integrates with the environment-specific configuration management features.
+This group contains functionality for deploying applications to Azure App Service and integrates with the environment-specific configuration management features. It also deploys Function Apps, including Function Apps on the Flex Consumption plan.
 
 ### Properties
 
-| Name                                       | Default Value | ENV Override                                | Description                                                                                                                  |
-| ------------------------------------------ | ------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `AppServiceAppsToDeploy`                   | @()           |                                             | Deploys the specified ZIP packages to Azure App Service. See [note below](#appserviceappstodeploy) for configuration syntax. |
-| `SkipAppServiceAppDeployment`              | $false        | `ZF_DEPLOY_SKIP_APP_SERVICE_DEPLOYMENT`     | When true, any configured App Service deployments will be skipped.                                                           |
-| `AppServiceRequiresTemporaryNetworkAccess` | $false        | `ZF_DEPLOY_APP_SERVICE_TEMP_NETWORK_ACCESS` | When true, a temporary AppService firewall rule will be created to give the deployment process access to the App Service.    |
+| Name                                       | Default Value | ENV Override                                            | Description                                                                                                                  |
+| ------------------------------------------ | ------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `AppServiceAppsToDeploy`                   | @()           |                                                         | Deploys the specified ZIP packages to Azure App Service. See [note below](#appserviceappstodeploy) for configuration syntax. |
+| `SkipAppServiceAppDeployment`              | $false        | `ZF_DEPLOY_SKIP_APP_SERVICE_DEPLOYMENT`                 | When true, any configured App Service deployments will be skipped.                                                           |
+| `AppServiceRequiresTemporaryNetworkAccess` | $false        | `ZF_DEPLOY_APP_SERVICE_TEMP_NETWORK_ACCESS`             | When true, a temporary AppService firewall rule will be created to give the deployment process access to the App Service.    |
+| `AppServiceFlexDeploymentTimeoutSeconds`   | 600           | `ZF_DEPLOY_APP_SERVICE_FLEX_DEPLOYMENT_TIMEOUT_SECONDS` | The maximum time, in seconds, to wait for a deployment to a Function App on the Flex Consumption plan to finish.             |
 
 #### AppServiceAppsToDeploy
 
@@ -21,25 +22,46 @@ This property is configured using the following structure:
 ```powershell
 $AppServiceAppsToDeploy = @(
     @{
-        appServiceName = { $deploymentConfig.frontEndAppServiceName }   # Using the scripblock syntax enables lazy-evaluation
+        appServiceName = { $deploymentConfig.frontEndAppServiceName }   # Using the scriptblock syntax enables lazy-evaluation
         resourceGroupName = { $deploymentConfig.resourceGroupName }
-        zipPackagePath = $frontEndZipPackagePath                        # This variable will be evaluation on initialisation (e.g. a parameter on the entrypoint script)
+        zipPackagePath = $frontEndZipPackagePath                        # This variable is evaluated on initialisation (for example, a parameter on the entrypoint script)
     }
     @{
-        appServiceName = { $deploymentConfig.backEndAppServiceName }
+        appServiceName = { $deploymentConfig.functionAppName }
         resourceGroupName = { $deploymentConfig.resourceGroupName }
-        zipPackagePath = $backEndZipPackagePath
+        zipPackagePath = $functionAppZipPackagePath
+        remoteBuild = $false                                            # Optional. See the Flex Consumption plan section below.
     }
 )
 ```
 
 ***NOTE**: The ZIP package should be a valid deployment package for Azure App Service.*
 
+#### Function Apps on the Flex Consumption plan
+
+The `deployAppServiceZipPackages` task checks the plan of each app before it deploys the app. For a Function App on the [Flex Consumption plan](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan), the task uses `Publish-FlexConsumptionFunctionApp` instead of `Publish-AzWebApp`. Existing configuration works without changes.
+
+`Publish-AzWebApp` cannot report the result of a Flex Consumption deployment. It can report success before the deployment finishes, and it does not detect a failed deployment.
+
+[`Publish-FlexConsumptionFunctionApp`](docs/functions/Publish-FlexConsumptionFunctionApp.md) uploads the package to the OneDeploy endpoint (`/api/publish`) of the app. Then it checks the status of the deployment about once a second. The task fails in these cases:
+
+- The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
+- The deployment does not finish within `AppServiceFlexDeploymentTimeoutSeconds`. The default is 600 seconds.
+- The app's source control manager (SCM) site blocks the upload or the status checks for 60 seconds.
+
+The error message contains the status text of the deployment and a link to its log.
+
+If the platform must build the package after the upload, set `remoteBuild = $true`. For example, a Python app needs a remote build to install its packages. Do not set `remoteBuild` for packages that are ready to run, such as .NET apps. For apps on other plans, the task ignores `remoteBuild` and writes a warning.
+
+`AppServiceRequiresTemporaryNetworkAccess` works for Flex Consumption apps in the same way as for other apps. A change to the access restrictions of an SCM site can take more than 30 seconds to apply. During that time, the SCM site can block some requests and allow others. So `Publish-FlexConsumptionFunctionApp` retries requests that the SCM site blocks with HTTP 403, for up to 60 seconds.
+
+To provision a Flex Consumption app, use `deployArmTemplates` as usual. The plan and the app are ordinary Bicep or ARM resources, so provisioning needs no extra configuration.
+
 ### Tasks
 
-| Name                          | Description                           |
-| ----------------------------- | ------------------------------------- |
-| `deployAppServiceZipPackages` | Deploy Azure App Service ZIP packages |
+| Name                          | Description                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `deployAppServiceZipPackages` | Deploy ZIP packages to Azure App Service and Function Apps, including Function Apps on the Flex Consumption plan |
 
 ## ARM Deployments
 
