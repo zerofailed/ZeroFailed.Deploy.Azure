@@ -105,6 +105,9 @@ function Publish-FlexConsumptionFunctionApp {
     $forbiddenRetrySeconds = 60
     $uploadRetryIntervalSeconds = 5
 
+    # Before PowerShell 7.4, Invoke-WebRequest can limit the time to receive the response headers, but not the time to read the response body
+    $responseReadTimeoutSupported = $PSVersionTable.PSVersion -ge [version]'7.4'
+
     $site = _getWebAppSiteResource -ResourceGroupName $ResourceGroupName -Name $Name
     if ($site.properties.sku -ne 'FlexConsumption') {
         throw "The Function App '$Name' is not on the Flex Consumption plan. Its SKU is '$($site.properties.sku)'. Use Publish-AzWebApp to deploy apps on other plans."
@@ -179,7 +182,31 @@ function Publish-FlexConsumptionFunctionApp {
 
     Write-Host "Waiting up to $TimeoutSeconds seconds for deployment '$deploymentId' to finish"
     while ($true) {
-        $statusResponse = Invoke-WebRequest -Method Get -Uri $deploymentUri -SkipHttpErrorCheck @authSplat
+        # Limit each request to the time that remains, so that a request that gets no response cannot delay the function past the timeout
+        $statusResponse = $null
+        $remainingSeconds = [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)
+        if ($remainingSeconds -gt 0) {
+            $timeoutSplat = @{ TimeoutSec = $remainingSeconds }
+            if ($responseReadTimeoutSupported) {
+                $timeoutSplat.OperationTimeoutSeconds = $remainingSeconds
+            }
+            try {
+                $statusResponse = Invoke-WebRequest -Method Get -Uri $deploymentUri -SkipHttpErrorCheck @timeoutSplat @authSplat
+            }
+            catch [System.OperationCanceledException], [System.TimeoutException] {
+                Write-Host "The status endpoint '$deploymentUri' did not respond within $remainingSeconds seconds"
+            }
+        }
+
+        if ($null -eq $statusResponse) {
+            $lastStatusName = $null -eq $lastStatus ? 'unknown' : $statusNames[$lastStatus]
+            $message = "Deployment '$deploymentId' to the Function App '$Name' did not finish within $TimeoutSeconds seconds. Its last status was '$lastStatusName'."
+            if ($lastStatusText) {
+                $message += " Status text: '$lastStatusText'."
+            }
+            $message += " To wait longer, increase the timeout."
+            throw $message
+        }
 
         if ($statusResponse.StatusCode -eq 403) {
             if ($null -eq $forbiddenSince) {
@@ -250,16 +277,6 @@ function Publish-FlexConsumptionFunctionApp {
             $lastStatus = $status
             $lastStatusText = $statusText
             $lastProgress = $progress
-        }
-
-        if ((Get-Date) -ge $deadline) {
-            $lastStatusName = $null -eq $lastStatus ? 'unknown' : $statusNames[$lastStatus]
-            $message = "Deployment '$deploymentId' to the Function App '$Name' did not finish within $TimeoutSeconds seconds. Its last status was '$lastStatusName'."
-            if ($lastStatusText) {
-                $message += " Status text: '$lastStatusText'."
-            }
-            $message += " To wait longer, increase the timeout."
-            throw $message
         }
 
         Start-Sleep -Seconds 1
