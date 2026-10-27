@@ -11,6 +11,11 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
 
     foreach ($armDeployment in $RequiredArmDeployments) {
 
+        # Validate optional properties
+        if (!$armDeployment.ContainsKey('configKeysToIgnore')) {
+            $armDeployment += @{ configKeysToIgnore = @() }
+        }
+
         $deploymentResult = Invoke-ArmDeployment -ArmDeployment $armDeployment `
                                                  -DeploymentConfig $script:DeploymentConfig `
                                                  -WhatIfMode:$ArmWhatIfMode `
