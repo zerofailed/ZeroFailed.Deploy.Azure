@@ -20,7 +20,7 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
 
         # Validate optional properties
         if (!$armDeployment.ContainsKey('configKeysToIgnore')) {
-            $armDeployment += @{ $configKeysToIgnore = @() }
+            $armDeployment += @{ configKeysToIgnore = @() }
         }
 
         # Prepare parameters for ARM deployment
