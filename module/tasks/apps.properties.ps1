@@ -10,3 +10,6 @@ $SkipAppServiceAppDeployment = [Convert]::ToBoolean((property ZF_DEPLOY_SKIP_APP
 
 #Synopsis: When true, a temporary AppService firewall rule will be created to give the deployment process access to the App Service.
 $AppServiceRequiresTemporaryNetworkAccess = [Convert]::ToBoolean((property ZF_DEPLOY_APP_SERVICE_TEMP_NETWORK_ACCESS $false))
+
+# Synopsis: The maximum time, in seconds, to wait for a deployment to a Function App on the Flex Consumption plan to finish. The default is 600.
+$AppServiceFlexDeploymentTimeoutSeconds = [int](property ZF_DEPLOY_APP_SERVICE_FLEX_DEPLOYMENT_TIMEOUT_SECONDS 600)

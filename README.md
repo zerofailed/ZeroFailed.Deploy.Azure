@@ -24,6 +24,8 @@ This extension consists of the following feature groups, refer to the [HELP page
 - Monitoring integrations
 - Security
 
+The application deployment features support Function Apps on the [Flex Consumption plan](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan). The `deployAppServiceZipPackages` task detects these apps, and waits for each deployment to finish. If a deployment fails, the task fails too. A Function App that needs a remote build can request one with the `remoteBuild` setting. For details, see [Function Apps on the Flex Consumption plan](./HELP.md#function-apps-on-the-flex-consumption-plan).
+
 The diagram below shows the discrete features and when they run as part of the default build process provided by [ZeroFailed.Deploy.Common](https://github.com/zerofailed/ZeroFailed.Deploy.Common).
 
 ```mermaid
