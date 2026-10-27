@@ -2,9 +2,9 @@
 document type: cmdlet
 external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
-Locale: en-GB
+Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 11/17/2025
+ms.date: 09/22/2026
 PlatyPS schema version: 2024-05-01
 title: Assert-BicepCliVersionInPath
 ---
@@ -35,21 +35,34 @@ Assert-BicepCliVersionInPath -MinimumBicepVersion <string> [<CommonParameters>]
 
 Checks that the specified version of the Bicep CLI is available via the PATH (as required when using Az.PowerShell to deploy Bicep templates).
 
-When not found also checks whether a suitable version if available via Azure CLI.  If so, the PATH is updated to make it available; otherwise a suitable version is installed via the Azure CLI.
+When not found also checks whether a suitable version if available via Azure CLI.
+ If so, the PATH is updated to make it available; otherwise a suitable version is installed via the Azure CLI.
 
 ## EXAMPLES
 
 ### Example 1 - Ensure any version is available
 
+```powershell
 Assert-BicepCliVersionInPath
+```
+
+Ensures any version of the Bicep CLI is available.
 
 ### Example 2 - Ensure the latest version is available
 
+```powershell
 Assert-BicepCliVersionInPath -RequiredBicepVersion 'latest'
+```
+
+Ensures the latest version of the Bicep CLI is available.
 
 ### Example 3 - Ensure a minimum version is available
 
+```powershell
 Assert-BicepCliVersionInPath -MinimumBicepVersion '0.38.33'
+```
+
+Ensures at least version 0.38.33 of the Bicep CLI is available.
 
 ## PARAMETERS
 
@@ -98,6 +111,7 @@ HelpMessage: ''
 ### -RequiredBicepVersion
 
 Specifies that a particular version of the Bicep CLI is available, if not, then that version is installed via Azure CLI.
+An empty string (the default) means any version, and 'latest' means the latest version.
 
 ```yaml
 Type: System.String

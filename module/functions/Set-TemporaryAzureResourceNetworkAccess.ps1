@@ -3,6 +3,43 @@
 # </copyright>
 
 function Set-TemporaryAzureResourceNetworkAccess {
+    <#
+    .SYNOPSIS
+    Manages the addition and removal of temporary network access rules for different Azure resource types.
+
+    .DESCRIPTION
+    Each resource type implements its own handler for performing the addition and removal operations.
+
+    .PARAMETER ResourceType
+    The type of Azure resource to be managed.
+
+    .PARAMETER ResourceGroupName
+    The resource group of the resource to be managed.
+
+    .PARAMETER ResourceName
+    The name of the resource to be managed.
+
+    .PARAMETER Revoke
+    When true, any existing temporary network access rules for the specified resource will be removed. No
+    rules will be added.
+
+    .PARAMETER Wait
+    When true, processing will wait for a time period implemented by the handler to allow the changes to take effect.
+
+    .EXAMPLE
+    ```powershell
+    Set-TemporaryAzureResourceNetworkAccess -ResourceType KeyVault -ResourceGroupName 'my-resource-group' -ResourceName 'my-key-vault' -Wait
+    ```
+
+    Grants the current public IP address temporary access to a Key Vault, waiting for the rule to take effect.
+
+    .EXAMPLE
+    ```powershell
+    Set-TemporaryAzureResourceNetworkAccess -ResourceType KeyVault -ResourceGroupName 'my-resource-group' -ResourceName 'my-key-vault' -Revoke
+    ```
+
+    Removes any temporary network access rules previously added to the Key Vault.
+    #>
     [CmdletBinding()]
     [OutputType([System.Void])]
     param (
@@ -23,7 +60,8 @@ function Set-TemporaryAzureResourceNetworkAccess {
 
     # Set optional values used by some handler implementations
     $script:ruleName = "temp-cicd-rule"
-    $script:ruleDescription = "Temporary rule added by 'Set-TemporaryAzureResourceNetworkAccess'"
+    # App Service rejects access restriction rules with descriptions longer than 64 characters
+    $script:ruleDescription = "Temporary rule added by Set-TemporaryAzureResourceNetworkAccess"
     $script:currentPublicIpAddress = (Invoke-RestMethod https://ifconfig.io).Trim()
     Write-Host "currentPublicIpAddress: $currentPublicIpAddress"
 

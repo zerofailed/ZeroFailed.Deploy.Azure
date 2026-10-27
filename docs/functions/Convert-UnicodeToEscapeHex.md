@@ -2,9 +2,9 @@
 document type: cmdlet
 external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
-Locale: en-GB
+Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 11/14/2025
+ms.date: 09/22/2026
 PlatyPS schema version: 2024-05-01
 title: Convert-UnicodeToEscapeHex
 ---
@@ -29,7 +29,8 @@ Convert-UnicodeToEscapeHex [-JsonString] <string> [-Compress] [<CommonParameters
 ## DESCRIPTION
 
 The `Convert-UnicodeToEscapeHex` function takes a JSON string as input, parses it into a PowerShell object,
-and processes each property.  If a property value is a string, it converts any Unicode characters (with a
+and processes each property.
+ If a property value is a string, it converts any Unicode characters (with a
 decimal value greater than 127) into their escaped hexadecimal representation (e.g., `\u00E9` for "é").
 
 The modified JSON object is then converted back to a JSON string and returned.
@@ -39,12 +40,12 @@ The modified JSON object is then converted back to a JSON string and returned.
 ### EXAMPLE 1
 
 ```powershell
-PS:> $json = '{"Name": "Café", "Description": "A place to enjoy coffee ☕"}'
-PS:> Convert-UnicodeToEscapeHex -JsonString $json
-{"Name":"Caf\u00e9","Description":"A place to enjoy coffee \u2615"}
+$json = '{"Name": "Café", "Description": "A place to enjoy coffee ☕"}'
+Convert-UnicodeToEscapeHex -JsonString $json -Compress
 ```
 
-This example demonstrates how the function converts Unicode characters in the input JSON string to their escaped hexadecimal form.
+Converts the Unicode characters in the input JSON string to their escaped hexadecimal form, returning
+{"Name":"Caf\\u00e9","Description":"A place to enjoy coffee \\u2615"}
 
 ## PARAMETERS
 
@@ -73,7 +74,6 @@ HelpMessage: ''
 ### -JsonString
 
 A JSON-formatted string to be processed.
-This parameter is mandatory.
 
 ```yaml
 Type: System.String
