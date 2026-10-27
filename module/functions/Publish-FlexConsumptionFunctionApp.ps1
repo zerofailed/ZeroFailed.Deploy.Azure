@@ -182,7 +182,9 @@ function Publish-FlexConsumptionFunctionApp {
 
     Write-Host "Waiting up to $TimeoutSeconds seconds for deployment '$deploymentId' to finish"
     while ($true) {
-        # Limit each request to the time that remains, so that a request that gets no response cannot delay the function past the timeout
+        # Limit each request to the time that remains, so that a request that gets no response cannot block the function indefinitely.
+        # TimeoutSec limits the wait for the response headers, and OperationTimeoutSeconds limits each read of the body, not the whole request.
+        # A slow response can therefore make the function finish after the timeout. This is unlikely, because the status response is small.
         $statusResponse = $null
         $remainingSeconds = [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)
         if ($remainingSeconds -gt 0) {
