@@ -329,6 +329,28 @@ Describe 'Invoke-ArmDeployment' {
 
             Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like "*Unable to restore the previous Az context 'original'*Restore failed*" }
         }
+
+        It 'Fails when the restore fails after a successful run, in <Mode> mode' -ForEach @(
+            @{ Mode = 'deploy' }
+            @{ Mode = 'what-if' }
+        ) {
+            Mock Set-AzContext { throw 'Restore failed' } -ParameterFilter { $Context }
+            $entry = New-TestDeployment -Scope subscription
+            $entry.subscriptionId = '11111111-1111-1111-1111-111111111111'
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} -WhatIfMode:($Mode -eq 'what-if') } |
+                Should -Throw "*Unable to restore the previous Az context 'original'*Restore failed*"
+        }
+
+        It 'Fails when the restore fails after a what-if error with ContinueOnWhatIfError' {
+            Mock New-AzSubscriptionDeployment { throw 'What-if failed' }
+            Mock Set-AzContext { throw 'Restore failed' } -ParameterFilter { $Context }
+            $entry = New-TestDeployment -Scope subscription
+            $entry.subscriptionId = '11111111-1111-1111-1111-111111111111'
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} -WhatIfMode -ContinueOnWhatIfError } |
+                Should -Throw "*Unable to restore the previous Az context 'original'*Restore failed*"
+        }
     }
 
     Context 'What-if errors' {

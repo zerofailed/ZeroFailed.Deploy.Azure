@@ -35,7 +35,7 @@ A '.bicep' or '.json' template receives its parameters from the environment conf
 A '.bicepparam' file is passed via '-TemplateParameterFile', and its 'using' statement names the template.
 The environment configuration is not passed as template parameters, and 'additionalParameters' are not supported.
 
-When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards.
+When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards. If the restore fails, the function throws, so that a later deployment cannot run in the wrong subscription. If the deployment has already failed, the function keeps the deployment error and reports the restore error as a warning.
 
 ## EXAMPLES
 

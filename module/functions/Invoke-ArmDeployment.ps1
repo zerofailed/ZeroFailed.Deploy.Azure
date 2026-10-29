@@ -15,7 +15,7 @@ function Invoke-ArmDeployment
 
     A '.bicepparam' file is passed via '-TemplateParameterFile', and its 'using' statement names the template. The environment configuration is not passed as template parameters, and 'additionalParameters' are not supported.
 
-    When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards.
+    When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards. If the restore fails, the function throws, so that a later deployment cannot run in the wrong subscription. If the deployment has already failed, the function keeps the deployment error and reports the restore error as a warning.
 
     .PARAMETER ArmDeployment
     The deployment entry. Supported keys: 'templatePath', 'location', 'scope' ('resourceGroup' (the default), 'subscription', 'managementGroup' or 'tenant'), 'resourceGroupName', 'managementGroupId', 'subscriptionId', 'additionalParameters' and 'configKeysToIgnore'.
@@ -82,6 +82,7 @@ function Invoke-ArmDeployment
     }
 
     $savedContext = $null
+    $isPropagatingError = $false
     try {
         if ($subscriptionId) {
             # Switch first, so that every deferred value below is evaluated in the target subscription.
@@ -199,6 +200,10 @@ function Invoke-ArmDeployment
         }
         return $deploymentResult
     }
+    catch {
+        $isPropagatingError = $true
+        throw
+    }
     finally {
         if ($savedContext) {
             Write-Host "Restoring the previous Az context"
@@ -206,8 +211,15 @@ function Invoke-ArmDeployment
                 Set-AzContext -Context $savedContext -Scope Process | Out-Null
             }
             catch {
-                # Never replace the deployment's own error with a restore error
-                Write-Warning "Unable to restore the previous Az context '$($savedContext.Name)': $($_.Exception.Message)"
+                $restoreError = "Unable to restore the previous Az context '$($savedContext.Name)': $($_.Exception.Message)"
+                if ($isPropagatingError) {
+                    # Never replace the deployment's own error with a restore error
+                    Write-Warning $restoreError
+                }
+                else {
+                    # Otherwise a later deployment without a 'subscriptionId' would run in the wrong subscription
+                    throw $restoreError
+                }
             }
         }
     }
