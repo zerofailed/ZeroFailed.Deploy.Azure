@@ -28,7 +28,7 @@ Copyright = '(c) endjin. All rights reserved.'
 Description = 'An extension for ZeroFailed with deployment-related features for the Azure cloud platform.'
 
 # Minimum version of the PowerShell engine required by this module
-PowerShellVersion = '7.0'
+PowerShellVersion = '7.4'
 
 # Name of the PowerShell host required by this module
 # PowerShellHostName = ''

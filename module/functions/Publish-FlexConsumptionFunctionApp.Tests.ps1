@@ -273,8 +273,47 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
             { Publish-FlexConsumptionFunctionApp @splat -TimeoutSeconds 5 } |
                 Should -Throw "Deployment 'dep-123' to the Function App 'my-func-app' did not finish within 5 seconds. Its last status was 'Building'. Status text: 'Building the app'. To wait longer, increase the timeout."
 
-            # Polls at 0, 1, 2, 3, 4 and 5 seconds on the simulated clock
-            Should -Invoke Invoke-WebRequest -Exactly -Times 6 -ParameterFilter { $Method -eq 'Get' }
+            # Polls at 0, 1, 2, 3 and 4 seconds on the simulated clock
+            Should -Invoke Invoke-WebRequest -Exactly -Times 5 -ParameterFilter { $Method -eq 'Get' }
+        }
+
+        It 'should limit each status request to the time that remains before the timeout' {
+            Set-StatusResponses @(
+                New-StatusResponse -Status 1
+                New-StatusResponse -Status 1
+                New-StatusResponse -Status 4
+            )
+
+            Publish-FlexConsumptionFunctionApp @splat -TimeoutSeconds 5
+
+            Should -Invoke Invoke-WebRequest -Exactly -Times 3 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 5 -and $OperationTimeoutSeconds -eq 5 }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 4 -and $OperationTimeoutSeconds -eq 4 }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 3 -and $OperationTimeoutSeconds -eq 3 }
+        }
+
+        # Invoke-WebRequest throws a TaskCanceledException when it gets no response headers in time,
+        # and a TimeoutException when it cannot read the response body in time
+        It 'should throw an error when a status request gets no response before the timeout (<ExceptionType>)' -ForEach @(
+            @{ ExceptionType = [System.Threading.Tasks.TaskCanceledException] }
+            @{ ExceptionType = [System.TimeoutException] }
+        ) {
+            $script:statusRequestCount = 0
+            Mock Invoke-WebRequest {
+                $script:statusRequestCount++
+                if ($script:statusRequestCount -eq 1) {
+                    return New-StatusResponse -Status 1 -StatusText 'Building the app'
+                }
+                # The request waits until its timeout ends, at the deadline
+                $script:now = $script:now.AddSeconds(4)
+                throw $ExceptionType::new('No response')
+            } -ParameterFilter { $Method -eq 'Get' }
+
+            { Publish-FlexConsumptionFunctionApp @splat -TimeoutSeconds 5 } |
+                Should -Throw "Deployment 'dep-123' to the Function App 'my-func-app' did not finish within 5 seconds. Its last status was 'Building'. Status text: 'Building the app'. To wait longer, increase the timeout."
+
+            Should -Invoke Invoke-WebRequest -Exactly -Times 2 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Write-Host -Exactly -Times 1 -ParameterFilter { $Object -eq "The status endpoint '$deploymentUri' did not respond within 4 seconds" }
         }
     }
 
