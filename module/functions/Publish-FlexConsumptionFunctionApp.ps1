@@ -203,6 +203,9 @@ function Publish-FlexConsumptionFunctionApp {
         if ($null -eq $statusResponse) {
             $lastStatusName = $null -eq $lastStatus ? 'unknown' : $statusNames[$lastStatus]
             $message = "Deployment '$deploymentId' to the Function App '$Name' did not finish within $TimeoutSeconds seconds. Its last status was '$lastStatusName'."
+            if ($null -ne $forbiddenSince) {
+                $message += " The status endpoint most recently returned HTTP 403; check the SCM site's access restrictions."
+            }
             if ($lastStatusText) {
                 $message += " Status text: '$lastStatusText'."
             }
