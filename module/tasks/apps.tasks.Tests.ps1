@@ -193,6 +193,25 @@ Describe 'deployAppServiceZipPackages' {
                 $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' -and $ArchivePath -eq 'lazy.zip'
             }
         }
+
+        It 'should resolve a configuration object that is a scriptblock' {
+            $AppServiceAppsToDeploy = @(
+                {
+                    @{
+                        appServiceName = $deploymentConfig.appServiceName
+                        resourceGroupName = $deploymentConfig.resourceGroupName
+                        zipPackagePath = 'lazy.zip'
+                    }
+                }
+            )
+
+            & $taskAction
+
+            Should -Invoke Test-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' }
+            Should -Invoke Publish-AzWebApp -Exactly -Times 1 -ParameterFilter {
+                $ResourceGroupName -eq 'my-rg' -and $Name -eq 'my-app' -and $ArchivePath -eq 'lazy.zip'
+            }
+        }
     }
 
     Context 'When several apps are configured' {

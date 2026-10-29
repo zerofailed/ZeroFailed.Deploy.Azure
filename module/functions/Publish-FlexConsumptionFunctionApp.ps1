@@ -179,7 +179,32 @@ function Publish-FlexConsumptionFunctionApp {
 
     Write-Host "Waiting up to $TimeoutSeconds seconds for deployment '$deploymentId' to finish"
     while ($true) {
-        $statusResponse = Invoke-WebRequest -Method Get -Uri $deploymentUri -SkipHttpErrorCheck @authSplat
+        # Limit each request to the time that remains, so that a request that gets no response cannot block the function indefinitely.
+        # TimeoutSec limits the wait for the response headers, and OperationTimeoutSeconds limits each read of the body, not the whole request.
+        # A slow response can therefore make the function finish after the timeout. This is unlikely, because the status response is small.
+        $statusResponse = $null
+        $remainingSeconds = [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)
+        if ($remainingSeconds -gt 0) {
+            try {
+                $statusResponse = Invoke-WebRequest -Method Get -Uri $deploymentUri -SkipHttpErrorCheck -TimeoutSec $remainingSeconds -OperationTimeoutSeconds $remainingSeconds @authSplat
+            }
+            catch [System.OperationCanceledException], [System.TimeoutException] {
+                Write-Host "The status endpoint '$deploymentUri' did not respond within $remainingSeconds seconds"
+            }
+        }
+
+        if ($null -eq $statusResponse) {
+            $lastStatusName = $null -eq $lastStatus ? 'unknown' : $statusNames[$lastStatus]
+            $message = "Deployment '$deploymentId' to the Function App '$Name' did not finish within $TimeoutSeconds seconds. Its last status was '$lastStatusName'."
+            if ($null -ne $forbiddenSince) {
+                $message += " The status endpoint most recently returned HTTP 403; check the SCM site's access restrictions."
+            }
+            if ($lastStatusText) {
+                $message += " Status text: '$lastStatusText'."
+            }
+            $message += " To wait longer, increase the timeout."
+            throw $message
+        }
 
         if ($statusResponse.StatusCode -eq 403) {
             if ($null -eq $forbiddenSince) {
@@ -250,16 +275,6 @@ function Publish-FlexConsumptionFunctionApp {
             $lastStatus = $status
             $lastStatusText = $statusText
             $lastProgress = $progress
-        }
-
-        if ((Get-Date) -ge $deadline) {
-            $lastStatusName = $null -eq $lastStatus ? 'unknown' : $statusNames[$lastStatus]
-            $message = "Deployment '$deploymentId' to the Function App '$Name' did not finish within $TimeoutSeconds seconds. Its last status was '$lastStatusName'."
-            if ($lastStatusText) {
-                $message += " Status text: '$lastStatusText'."
-            }
-            $message += " To wait longer, increase the timeout."
-            throw $message
         }
 
         Start-Sleep -Seconds 1
