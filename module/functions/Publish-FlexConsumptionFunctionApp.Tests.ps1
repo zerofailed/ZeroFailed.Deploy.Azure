@@ -287,16 +287,9 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
             Publish-FlexConsumptionFunctionApp @splat -TimeoutSeconds 5
 
             Should -Invoke Invoke-WebRequest -Exactly -Times 3 -ParameterFilter { $Method -eq 'Get' }
-            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 5 }
-            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 4 }
-            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 3 }
-
-            # Invoke-WebRequest has the OperationTimeoutSeconds parameter only in PowerShell 7.4 and later
-            if ($PSVersionTable.PSVersion -ge [version]'7.4') {
-                Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $OperationTimeoutSeconds -eq 5 }
-                Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $OperationTimeoutSeconds -eq 4 }
-                Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $OperationTimeoutSeconds -eq 3 }
-            }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 5 -and $OperationTimeoutSeconds -eq 5 }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 4 -and $OperationTimeoutSeconds -eq 4 }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $TimeoutSec -eq 3 -and $OperationTimeoutSeconds -eq 3 }
         }
 
         # Invoke-WebRequest throws a TaskCanceledException when it gets no response headers in time,
