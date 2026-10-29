@@ -59,8 +59,8 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
 # Synopsis: Checks that a suitable version of Bicep CLI is available, installing it via Azure CLI when missing.
 task ensureBicepVersion -If { !$SkipEnsureBicepVersion } {
 
-    # A '.bicepparam' file also needs the Bicep CLI. Resolve the path first, because it can be a scriptblock.
-    $deploymentRequiresBicep = $RequiredArmDeployments | Where-Object { (Resolve-Value $_.templatePath) -match '\.bicep(param)?$' }
+    # Deferred paths must not run before their deployment's context and prerequisites are ready.
+    $deploymentRequiresBicep = $RequiredArmDeployments | Where-Object { $_.templatePath -is [scriptblock] -or $_.templatePath -match '\.bicep(param)?$' }
 
     if ($deploymentRequiresBicep -or $ForceBicepVersionCheck) {
         if ($MinimumBicepVersion) {
