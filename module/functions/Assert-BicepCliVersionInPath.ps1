@@ -92,6 +92,12 @@ function Assert-BicepCliVersionInPath
         & az config set bicep.use_binary_from_path=false
         & az bicep install --version $Version
     }
+    function _getLatestBicepVersion {
+        [CmdletBinding()]
+        param ()
+        # Calls the GitHub API, so only look it up when it is needed
+        return (Invoke-RestMethod -Uri https://aka.ms/BicepLatestRelease | Select-Object -ExpandProperty tag_name).TrimStart('v')
+    }
     function _extractBicepVersionFromOutput {
         [CmdletBinding()]
         param (
@@ -133,10 +139,9 @@ function Assert-BicepCliVersionInPath
     }
     
     # Check to see whether we should be using the latest version available
-    $latestBicepVersion = (Invoke-RestMethod -Uri https://aka.ms/BicepLatestRelease | Select-Object -ExpandProperty tag_name).TrimStart('v')
     if ($RequiredBicepVersion -eq 'latest') {
-        Write-Verbose "Bicep CLI latest version: $latestBicepVersion"
-        $RequiredBicepVersion = $latestBicepVersion
+        $RequiredBicepVersion = _getLatestBicepVersion
+        Write-Verbose "Bicep CLI latest version: $RequiredBicepVersion"
     }
     
     $requiresInstallOrUpdate = $false
@@ -145,7 +150,7 @@ function Assert-BicepCliVersionInPath
         # No existing version found - installation required
         $requiresInstallOrUpdate = $true
         if ($PSCmdlet.ParameterSetName -eq 'minimumVersion' -or !$RequiredBicepVersion) {
-            $RequiredBicepVersion = $latestBicepVersion
+            $RequiredBicepVersion = _getLatestBicepVersion
         }
     }
     elseif ($PSCmdlet.ParameterSetName -eq 'requiredVersion') {
@@ -158,7 +163,7 @@ function Assert-BicepCliVersionInPath
         # Check if minimum version requirement is met
         if ([version]$existingBicepCommandVersion -lt [version]$MinimumBicepVersion) {
             $requiresInstallOrUpdate = $true
-            $RequiredBicepVersion = $latestBicepVersion
+            $RequiredBicepVersion = _getLatestBicepVersion
         }
     }
 
