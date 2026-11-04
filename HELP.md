@@ -163,6 +163,10 @@ $RequiredArmDeployments = @(
 )
 ```
 
+#### ARM deployment errors
+
+When an ARM deployment or what-if fails, the error message contains every error that Azure reports, including the inner errors of a template validation failure. The inner errors usually describe the actual problem, for example a resource provider's preflight validation error. The message also contains the deployment name, which you can use to find the deployment in the Azure portal.
+
 ### Tasks
 
 | Name                 | Description                                                                                                                  |

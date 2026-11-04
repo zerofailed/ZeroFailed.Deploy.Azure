@@ -383,6 +383,52 @@ Describe 'Invoke-ArmDeployment' {
             Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like '*BCP018*' }
         }
 
+        It 'Includes the error details that Az writes before a validation failure, in <Mode> mode' -ForEach @(
+            @{ Mode = 'deploy' }
+            @{ Mode = 'what-if' }
+        ) {
+            # The same pattern as Az.Resources: one error for each error and inner error, then a throw
+            Mock New-AzSubscriptionDeployment {
+                Write-Error 'Error: Code=InvalidTemplateDeployment; Message=See inner errors for details.'
+                Write-Error 'Error: Code=PreflightValidationCheckFailed; Message=Preflight validation failed.'
+                Write-Error "Error: Code=AccountNameInvalid; Message='bad_name' is not a valid storage account name."
+                throw 'The deployment validation failed'
+            }
+
+            { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope subscription) -DeploymentConfig @{} -WhatIfMode:($Mode -eq 'what-if') } |
+                Should -Throw '*InvalidTemplateDeployment*PreflightValidationCheckFailed*AccountNameInvalid*The deployment validation failed*'
+        }
+
+        It 'Reports the validation error details as a warning with ContinueOnWhatIfError' {
+            Mock New-AzSubscriptionDeployment {
+                Write-Error 'Error: Code=InvalidTemplateDeployment; Message=See inner errors for details.'
+                Write-Error 'Error: Code=AccountNameInvalid; Message=Bad name.'
+                throw 'The deployment validation failed'
+            }
+
+            Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope subscription) -DeploymentConfig @{} -WhatIfMode -ContinueOnWhatIfError |
+                Should -BeNullOrEmpty
+            Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like '*InvalidTemplateDeployment*AccountNameInvalid*' }
+        }
+
+        It 'Throws for a failed deployment that Az reports only as a non-terminating error' {
+            Mock New-AzSubscriptionDeployment {
+                Write-Error "Error: Code=Conflict; Message=Operation failed. (Code: Conflict, Target: '/subscriptions/x')"
+                [PSCustomObject]@{ ProvisioningState = 'Failed'; Outputs = $null }
+            }
+
+            { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope subscription) -DeploymentConfig @{} } |
+                Should -Throw '*Code=Conflict*Operation failed*'
+        }
+
+        It 'Keeps the original exception as the inner exception' {
+            $thrown = $null
+            try { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope subscription) -DeploymentConfig @{} -WhatIfMode }
+            catch { $thrown = $_ }
+
+            $thrown.Exception.InnerException.Message | Should -Be 'What-if failed'
+        }
+
         It 'Throws a configuration error even with ContinueOnWhatIfError' {
             $entry = New-TestDeployment -Scope subscription
             $entry.scope = 'galaxy'
