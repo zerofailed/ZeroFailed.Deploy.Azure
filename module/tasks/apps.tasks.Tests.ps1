@@ -36,7 +36,7 @@ BeforeAll {
 
     # Make other functions available for mocking
     function Test-FlexConsumptionFunctionApp { param ($ResourceGroupName, $Name) }
-    function Publish-FlexConsumptionFunctionApp { param ($ResourceGroupName, $Name, $ArchivePath, [switch] $RemoteBuild, $TimeoutSeconds) }
+    function Publish-FlexConsumptionFunctionApp { param ($ResourceGroupName, $Name, $ArchivePath, [switch] $RemoteBuild, $TimeoutSeconds, $StorageAccessRetrySeconds) }
     function Publish-AzWebApp { [CmdletBinding()] param ($ResourceGroupName, $Name, $ArchivePath, [switch] $Force) }
     function Set-TemporaryAzureResourceNetworkAccess { param ($ResourceType, $ResourceGroupName, $ResourceName, [switch] $Revoke, [switch] $Wait) }
 
@@ -61,6 +61,7 @@ Describe 'deployAppServiceZipPackages' {
         }
         $AppServiceRequiresTemporaryNetworkAccess = $false
         $AppServiceFlexDeploymentTimeoutSeconds = 600
+        $AppServiceFlexStorageAccessRetrySeconds = 1200
     }
 
     Context 'Task condition' {
@@ -102,7 +103,8 @@ Describe 'deployAppServiceZipPackages' {
                 $Name -eq 'my-app' -and
                 $ArchivePath -eq 'app.zip' -and
                 $RemoteBuild -eq $false -and
-                $TimeoutSeconds -eq 600
+                $TimeoutSeconds -eq 600 -and
+                $StorageAccessRetrySeconds -eq 1200
             }
             Should -Not -Invoke Publish-AzWebApp
         }
@@ -137,6 +139,15 @@ Describe 'deployAppServiceZipPackages' {
             & $taskAction
 
             Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $TimeoutSeconds -eq 1200 }
+        }
+
+        It 'should pass the configured storage access retry time' {
+            $AppServiceFlexStorageAccessRetrySeconds = 0
+            $AppServiceAppsToDeploy = @(@{ appServiceName = 'my-app'; resourceGroupName = 'my-rg'; zipPackagePath = 'app.zip' })
+
+            & $taskAction
+
+            Should -Invoke Publish-FlexConsumptionFunctionApp -Exactly -Times 1 -ParameterFilter { $StorageAccessRetrySeconds -eq 0 }
         }
     }
 

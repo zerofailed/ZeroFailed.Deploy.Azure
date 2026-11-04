@@ -13,3 +13,6 @@ $AppServiceRequiresTemporaryNetworkAccess = [Convert]::ToBoolean((property ZF_DE
 
 # Synopsis: The maximum time, in seconds, to wait for a deployment to a Function App on the Flex Consumption plan to finish. The default is 600.
 $AppServiceFlexDeploymentTimeoutSeconds = [int](property ZF_DEPLOY_APP_SERVICE_FLEX_DEPLOYMENT_TIMEOUT_SECONDS 600)
+
+# Synopsis: The maximum time, in seconds, to retry the upload to a Function App on the Flex Consumption plan while the app cannot write the package to its deployment storage account. A new role assignment can take more than 20 minutes to apply. Set it to 0 to fail at once. The default is 1200.
+$AppServiceFlexStorageAccessRetrySeconds = [int](property ZF_DEPLOY_APP_SERVICE_FLEX_STORAGE_ACCESS_RETRY_SECONDS 1200)
