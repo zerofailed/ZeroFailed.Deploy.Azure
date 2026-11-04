@@ -46,7 +46,8 @@ task deployAppServiceZipPackages -If { !$SkipAppServiceAppDeployment -and $null 
                     -Name $appServiceName `
                     -ArchivePath $zipPackagePath `
                     -RemoteBuild:$remoteBuild `
-                    -TimeoutSeconds $AppServiceFlexDeploymentTimeoutSeconds
+                    -TimeoutSeconds $AppServiceFlexDeploymentTimeoutSeconds `
+                    -StorageAccessRetrySeconds $AppServiceFlexStorageAccessRetrySeconds
             }
             else {
                 if ($remoteBuild) {
