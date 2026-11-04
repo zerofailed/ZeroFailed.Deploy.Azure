@@ -166,6 +166,7 @@ function Publish-FlexConsumptionFunctionApp {
         elseif ($uploadResponse.StatusCode -eq 400 -and
                 $uploadResponse.Content -match 'BlobUploadFailedException' -and
                 $uploadResponse.Content -match '\b403\b') {
+            $forbiddenSince = $null
             if (!$storageForbiddenSince) {
                 $storageForbiddenSince = Get-Date
                 Write-Host "The app cannot write the package to its deployment storage account yet (HTTP 403 from storage), so the function retries every $storageRetryIntervalSeconds seconds for up to $storageForbiddenRetrySeconds seconds. A new role assignment for the app's identity can take several minutes to apply."
