@@ -14,6 +14,7 @@ This group contains functionality for deploying applications to Azure App Servic
 | `SkipAppServiceAppDeployment`              | $false        | `ZF_DEPLOY_SKIP_APP_SERVICE_DEPLOYMENT`                 | When true, any configured App Service deployments will be skipped.                                                           |
 | `AppServiceRequiresTemporaryNetworkAccess` | $false        | `ZF_DEPLOY_APP_SERVICE_TEMP_NETWORK_ACCESS`             | When true, a temporary AppService firewall rule will be created to give the deployment process access to the App Service.    |
 | `AppServiceFlexDeploymentTimeoutSeconds`   | 600           | `ZF_DEPLOY_APP_SERVICE_FLEX_DEPLOYMENT_TIMEOUT_SECONDS` | The maximum time, in seconds, to wait for a deployment to a Function App on the Flex Consumption plan to finish.             |
+| `AppServiceFlexStorageAccessRetrySeconds`  | 1200          | `ZF_DEPLOY_APP_SERVICE_FLEX_STORAGE_ACCESS_RETRY_SECONDS` | The maximum time, in seconds, to retry the upload to a Function App on the Flex Consumption plan while the app cannot write the package to its deployment storage account. Set it to 0 to fail at once. See [Function Apps on the Flex Consumption plan](#function-apps-on-the-flex-consumption-plan). |
 
 #### AppServiceAppsToDeploy
 
@@ -48,11 +49,11 @@ The `deployAppServiceZipPackages` task checks the plan of each app before it dep
 - The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
 - The deployment does not finish within `AppServiceFlexDeploymentTimeoutSeconds`. The default is 600 seconds.
 - The app's source control manager (SCM) site blocks the upload or the status checks for 60 seconds.
-- The app cannot write the package to its deployment storage account for 5 minutes.
+- The app cannot write the package to its deployment storage account within `AppServiceFlexStorageAccessRetrySeconds`. The default is 1200 seconds.
 
 The error message contains the status text of the deployment and a link to its log.
 
-The app writes the package to its deployment storage account as the identity that its deployment storage settings name. That identity needs a role such as Storage Blob Data Contributor on the storage account. A new role assignment can take several minutes to apply, for example when the ARM deployment that runs before this task creates it for a new environment. So `Publish-FlexConsumptionFunctionApp` retries the upload for up to 5 minutes while the app cannot write to the storage account.
+The app writes the package to its deployment storage account as the identity that its deployment storage settings name. That identity needs a role such as Storage Blob Data Contributor on the storage account. A new role assignment can take more than 20 minutes to apply to the deployment service, for example when the ARM deployment that runs before this task creates it for a new environment. Until then, the upload fails with HTTP 400 and a `BlobUploadFailedException` that reports HTTP 403 from storage. So `Publish-FlexConsumptionFunctionApp` retries the upload every 30 seconds, for up to `AppServiceFlexStorageAccessRetrySeconds`. To fail at once instead, for example when the role assignments always exist before the deployment, set `AppServiceFlexStorageAccessRetrySeconds` to 0.
 
 If the platform must build the package after the upload, set `remoteBuild = $true`. For example, a Python app needs a remote build to install its packages. Do not set `remoteBuild` for packages that are ready to run, such as .NET apps. For apps on other plans, the task ignores `remoteBuild` and writes a warning.
 
