@@ -419,4 +419,63 @@ Describe 'Publish-FlexConsumptionFunctionApp' {
             Should -Invoke Invoke-WebRequest -Exactly -Times 102 -ParameterFilter { $Method -eq 'Get' }
         }
     }
+
+    Context 'When the app cannot write to its deployment storage account' {
+        BeforeAll {
+            # The response from a real deployment, when the app's storage role assignment was new
+            $storageForbiddenContent = '{"error":"BlobUploadFailedException: Failed to upload blob to storage account: Response status code does not indicate success: 403 (This request is not authorized to perform this operation using this permission.)."}'
+        }
+
+        It 'should retry the upload every 15 seconds' {
+            Set-UploadResponses @(
+                New-MockResponse -StatusCode 400 -Content $storageForbiddenContent
+                New-MockResponse -StatusCode 400 -Content $storageForbiddenContent
+                New-MockResponse -StatusCode 202 -Content '"dep-123"'
+            )
+
+            Publish-FlexConsumptionFunctionApp @splat
+
+            Should -Invoke Invoke-WebRequest -Exactly -Times 3 -ParameterFilter { $Method -eq 'Post' }
+            Should -Invoke Start-Sleep -Exactly -Times 2 -ParameterFilter { $Seconds -eq 15 }
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' }
+            Should -Invoke Write-Host -Exactly -Times 1 -ParameterFilter { $Object -like '*cannot write the package to its deployment storage account yet*role assignment*' }
+        }
+
+        It 'should throw an error when the upload fails for 5 minutes' {
+            Set-UploadResponses @(New-MockResponse -StatusCode 400 -Content $storageForbiddenContent)
+
+            { Publish-FlexConsumptionFunctionApp @splat } |
+                Should -Throw "*upload to '$publishUri' failed for 300 seconds*deployment storage account*Storage Blob Data Contributor*BlobUploadFailedException*"
+
+            # Uploads at 0, 15, 30 ... 300 seconds on the simulated clock
+            Should -Invoke Invoke-WebRequest -Exactly -Times 21 -ParameterFilter { $Method -eq 'Post' }
+            Should -Not -Invoke Invoke-WebRequest -ParameterFilter { $Method -eq 'Get' }
+        }
+
+        It 'should not retry another HTTP 400 response: <Description>' -ForEach @(
+            @{ Description = 'a different error'; Content = '{"error":"Package is not a valid ZIP file."}' }
+            @{ Description = 'a different storage status'; Content = '{"error":"BlobUploadFailedException: Failed to upload blob to storage account: Response status code does not indicate success: 404 (The specified container does not exist.)."}' }
+        ) {
+            Set-UploadResponses @(New-MockResponse -StatusCode 400 -Content $Content)
+
+            { Publish-FlexConsumptionFunctionApp @splat } |
+                Should -Throw "*upload to '$publishUri' failed with HTTP 400*"
+
+            Should -Invoke Invoke-WebRequest -Exactly -Times 1 -ParameterFilter { $Method -eq 'Post' }
+            Should -Not -Invoke Start-Sleep
+        }
+
+        It 'should measure the 60 seconds for HTTP 403 from the first HTTP 403 response' {
+            Set-UploadResponses @(
+                New-MockResponse -StatusCode 400 -Content $storageForbiddenContent
+                New-MockResponse -StatusCode 403 -Content 'blocked'
+            )
+
+            { Publish-FlexConsumptionFunctionApp @splat } |
+                Should -Throw "*failed with HTTP 403 for 60 seconds*"
+
+            # One storage error at 0 seconds, then HTTP 403 at 15, 20 ... 75 seconds on the simulated clock
+            Should -Invoke Invoke-WebRequest -Exactly -Times 14 -ParameterFilter { $Method -eq 'Post' }
+        }
+    }
 }

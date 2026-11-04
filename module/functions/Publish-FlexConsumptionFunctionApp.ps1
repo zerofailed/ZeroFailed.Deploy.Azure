@@ -17,11 +17,16 @@ function Publish-FlexConsumptionFunctionApp {
     The function retries requests that the SCM site blocks with HTTP 403, for up to 60 seconds.
     Changes to the SCM site's access restrictions, such as a temporary rule for this machine, can take more than 30 seconds to apply.
 
+    The function also retries the upload for up to 5 minutes when the app cannot write the package to its deployment storage account.
+    The SCM site reports this as HTTP 400, with a `BlobUploadFailedException` that contains HTTP 403 from storage.
+    It happens when the role assignment for the app's identity on the storage account is new, for example on the first deployment to a new environment, because a new role assignment can take several minutes to apply.
+
     The function fails in these cases:
 
     - The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
     - The deployment does not finish within `-TimeoutSeconds`.
     - The SCM site blocks the requests of the function for 60 seconds.
+    - The app cannot write to its deployment storage account for 5 minutes.
 
     The error message contains the status text of the deployment and a link to its log.
 
@@ -105,6 +110,13 @@ function Publish-FlexConsumptionFunctionApp {
     $forbiddenRetrySeconds = 60
     $uploadRetryIntervalSeconds = 5
 
+    # The SCM site writes the package to the app's deployment storage account, as the identity that the app's deployment
+    # storage settings name. A new role assignment for that identity can take several minutes to apply, for example on the
+    # first deployment to a new environment. Until then, the upload fails with HTTP 400, and the response reports HTTP 403
+    # from storage. So the function retries these uploads for up to 5 minutes.
+    $storageForbiddenRetrySeconds = 300
+    $storageRetryIntervalSeconds = 15
+
     $site = _getWebAppSiteResource -ResourceGroupName $ResourceGroupName -Name $Name
     if ($site.properties.sku -ne 'FlexConsumption') {
         throw "The Function App '$Name' is not on the Flex Consumption plan. Its SKU is '$($site.properties.sku)'. Use Publish-AzWebApp to deploy apps on other plans."
@@ -129,8 +141,8 @@ function Publish-FlexConsumptionFunctionApp {
         $publishUri += '?RemoteBuild=true'
     }
     Write-Host "Uploading the package '$ArchivePath' to '$publishUri'"
-    $uploadStart = Get-Date
-    $uploadRetried = $false
+    $forbiddenSince = $null
+    $storageForbiddenSince = $null
     while ($true) {
         $uploadResponse = Invoke-WebRequest -Method Post `
                                             -Uri $publishUri `
@@ -138,20 +150,37 @@ function Publish-FlexConsumptionFunctionApp {
                                             -ContentType 'application/zip' `
                                             -SkipHttpErrorCheck `
                                             @authSplat
-        if ($uploadResponse.StatusCode -ne 403) {
-            break
+        if ($uploadResponse.StatusCode -eq 403) {
+            if (!$forbiddenSince) {
+                $forbiddenSince = Get-Date
+                Write-Host "The upload returned HTTP 403, so the function retries every $uploadRetryIntervalSeconds seconds for up to $forbiddenRetrySeconds seconds. Changes to the SCM site's access restrictions can take more than 30 seconds to apply."
+            }
+            elseif (((Get-Date) - $forbiddenSince).TotalSeconds -ge $forbiddenRetrySeconds) {
+                throw "The upload to '$publishUri' failed with HTTP 403 for $forbiddenRetrySeconds seconds. Check that the SCM site's access restrictions allow this machine. Check that the deploying identity can deploy to the app. Response: $($uploadResponse.Content)"
+            }
+            else {
+                Write-Verbose "The upload returned HTTP 403 again. The function retries in $uploadRetryIntervalSeconds seconds."
+            }
+            Start-Sleep -Seconds $uploadRetryIntervalSeconds
         }
-        if (((Get-Date) - $uploadStart).TotalSeconds -ge $forbiddenRetrySeconds) {
-            throw "The upload to '$publishUri' failed with HTTP 403 for $forbiddenRetrySeconds seconds. Check that the SCM site's access restrictions allow this machine. Check that the deploying identity can deploy to the app. Response: $($uploadResponse.Content)"
-        }
-        if (!$uploadRetried) {
-            Write-Host "The upload returned HTTP 403, so the function retries every $uploadRetryIntervalSeconds seconds for up to $forbiddenRetrySeconds seconds. Changes to the SCM site's access restrictions can take more than 30 seconds to apply."
-            $uploadRetried = $true
+        elseif ($uploadResponse.StatusCode -eq 400 -and
+                $uploadResponse.Content -match 'BlobUploadFailedException' -and
+                $uploadResponse.Content -match '\b403\b') {
+            if (!$storageForbiddenSince) {
+                $storageForbiddenSince = Get-Date
+                Write-Host "The app cannot write the package to its deployment storage account yet (HTTP 403 from storage), so the function retries every $storageRetryIntervalSeconds seconds for up to $storageForbiddenRetrySeconds seconds. A new role assignment for the app's identity can take several minutes to apply."
+            }
+            elseif (((Get-Date) - $storageForbiddenSince).TotalSeconds -ge $storageForbiddenRetrySeconds) {
+                throw "The upload to '$publishUri' failed for $storageForbiddenRetrySeconds seconds, because the app cannot write the package to its deployment storage account (HTTP 403 from storage). Check that the identity in the app's 'functionAppConfig.deployment.storage.authentication' setting has a role such as Storage Blob Data Contributor on the storage account. Check that the storage account's network rules allow the app. Response: $($uploadResponse.Content)"
+            }
+            else {
+                Write-Verbose "The app still cannot write to its deployment storage account. The function retries in $storageRetryIntervalSeconds seconds."
+            }
+            Start-Sleep -Seconds $storageRetryIntervalSeconds
         }
         else {
-            Write-Verbose "The upload returned HTTP 403 again. The function retries in $uploadRetryIntervalSeconds seconds."
+            break
         }
-        Start-Sleep -Seconds $uploadRetryIntervalSeconds
     }
     if ($uploadResponse.StatusCode -ne 202) {
         throw "The upload to '$publishUri' failed with HTTP $($uploadResponse.StatusCode). Response: $($uploadResponse.Content)"

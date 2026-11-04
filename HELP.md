@@ -48,8 +48,11 @@ The `deployAppServiceZipPackages` task checks the plan of each app before it dep
 - The deployment fails, is cancelled, conflicts with another deployment or only partly succeeds.
 - The deployment does not finish within `AppServiceFlexDeploymentTimeoutSeconds`. The default is 600 seconds.
 - The app's source control manager (SCM) site blocks the upload or the status checks for 60 seconds.
+- The app cannot write the package to its deployment storage account for 5 minutes.
 
 The error message contains the status text of the deployment and a link to its log.
+
+The app writes the package to its deployment storage account as the identity that its deployment storage settings name. That identity needs a role such as Storage Blob Data Contributor on the storage account. A new role assignment can take several minutes to apply, for example when the ARM deployment that runs before this task creates it for a new environment. So `Publish-FlexConsumptionFunctionApp` retries the upload for up to 5 minutes while the app cannot write to the storage account.
 
 If the platform must build the package after the upload, set `remoteBuild = $true`. For example, a Python app needs a remote build to install its packages. Do not set `remoteBuild` for packages that are ready to run, such as .NET apps. For apps on other plans, the task ignores `remoteBuild` and writes a warning.
 
