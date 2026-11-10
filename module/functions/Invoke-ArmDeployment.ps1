@@ -177,6 +177,14 @@ function Invoke-ArmDeployment
             }
         }
 
+        # Az.Resources reports a failed validation as one non-terminating error for each error and for
+        # each of its inner errors, and then throws. With 'Stop', the first of these errors ends the
+        # cmdlet, so the inner errors, which describe the actual problem, are never written.
+        # Collect all of the errors instead, and report them together.
+        $deploymentParams.ErrorAction = 'SilentlyContinue'
+        $deploymentParams.ErrorVariable = 'armErrors'
+        $armErrors = $null
+        $terminatingError = $null
         try {
             # An assignment rather than 'Tee-Object', so that the function returns the result only once
             $deploymentResult = switch ($scope) {
@@ -187,11 +195,27 @@ function Invoke-ArmDeployment
             }
         }
         catch {
+            $terminatingError = $_
+        }
+
+        # Also covers a failed deployment, which Az reports as a non-terminating error beside a 'Failed' result.
+        # The error variable can also hold the terminating error, so remove duplicate messages.
+        $errorMessages = @(
+            @($armErrors) + @($terminatingError) |
+                Where-Object { $_ } |
+                ForEach-Object { $_.ToString().Trim() } |
+                Where-Object { $_ } |
+                Select-Object -Unique
+        )
+        if ($errorMessages.Count -gt 0) {
+            $operation = if ($WhatIfMode) { 'ARM what-if' } else { 'ARM deployment' }
+            $message = "$operation failed for '$name' (scope: $scope, deployment name: $($deploymentParams.Name)):`n  $($errorMessages -join "`n  ")"
             if ($WhatIfMode -and $ContinueOnWhatIfError) {
-                Write-Warning "ARM what-if failed for '$name' (scope: $scope): $($_.Exception.Message)"
+                Write-Warning $message
                 return $null
             }
-            throw
+            $innerException = if ($terminatingError) { $terminatingError.Exception } else { $null }
+            throw [System.Management.Automation.RuntimeException]::new($message, $innerException)
         }
 
         if ($WhatIfMode) {
