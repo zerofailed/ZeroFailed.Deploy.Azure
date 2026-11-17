@@ -1,3 +1,4 @@
+#Requires -Version 7.4
 [CmdletBinding()]
 param (
     [Parameter(Position=0)]
@@ -17,10 +18,20 @@ param (
     [string] $LogLevel = "minimal",
 
     [Parameter()]
-    [string] $ZfModuleVersion = "1.0.6",
+    [string] $ZfModulePath,
 
     [Parameter()]
-    [version] $InvokeBuildModuleVersion = "5.12.1"
+    [string] $ZfModuleVersion = "2.0.1",
+
+    [Parameter()]
+    [string] $ZfModuleRepository = "https://nuget.pkg.github.com/zerofailed/index.json",
+
+    [Parameter()]
+    [ValidateSet("Write","Frozen","Off")]
+    [string] $ZfExtensionsLockMode = ($env:GITHUB_ACTIONS -eq "true" ? "Frozen" : "Write"),
+
+    [Parameter()]
+    [version] $InvokeBuildModuleVersion = "5.14.23"
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $PSCommandPath
@@ -29,7 +40,20 @@ $here = Split-Path -Parent $PSCommandPath
 # This handles calling the build engine when this file is run like a normal PowerShell script
 # (i.e. avoids the need to have another script to setup the InvokeBuild environment and issue the 'Invoke-Build' command )
 if ($MyInvocation.ScriptName -notlike '*Invoke-Build.ps1') {
-    Install-PSResource InvokeBuild -Version $InvokeBuildModuleVersion -Scope CurrentUser -TrustRepository | Out-Null
+    if (!(Get-InstalledPSResource InvokeBuild -Version $InvokeBuildModuleVersion -ErrorAction Ignore)) {
+        # InvokeBuild is only published to PSGallery, which sometimes fails, so retry the install
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                Install-PSResource InvokeBuild -Version $InvokeBuildModuleVersion -Scope CurrentUser -TrustRepository -Repository PSGallery
+                break
+            }
+            catch {
+                if ($attempt -ge 3) { throw }
+                Write-Warning "Could not install InvokeBuild $InvokeBuildModuleVersion (attempt $attempt of 3), so retrying: $($_.Exception.Message)"
+                Start-Sleep -Seconds (5 * $attempt)
+            }
+        }
+    }
     try {
         Invoke-Build $Tasks $MyInvocation.MyCommand.Path @PSBoundParameters
     }
@@ -52,14 +76,60 @@ if ($MyInvocation.ScriptName -notlike '*Invoke-Build.ps1') {
 #endregion
 
 #region Initialise build framework
-Import-Module Microsoft.PowerShell.PSResourceGet
-Install-PSResource ZeroFailed -Version $ZfModuleVersion -Scope CurrentUser -TrustRepository | Out-Null
+$splat = @{ Force = $true; Verbose = $false}
+if (!($ZfModulePath)) {
+    if (!(Get-InstalledPSResource ZeroFailed -Version $ZfModuleVersion -ErrorAction Ignore)) {
+        # Support a repository URL, re-using any existing registration for it (and its credentials)
+        if ($ZfModuleRepository -match '://') {
+            $uri = $ZfModuleRepository
+            $ZfModuleRepository = (Get-PSResourceRepository | ? Uri -eq $uri | Select-Object -First 1).Name ?? ($uri -replace '\W','_')
+            $null = Get-PSResourceRepository $ZfModuleRepository -ErrorAction Ignore || Register-PSResourceRepository $ZfModuleRepository -Uri $uri
+        }
+        $installSplat = @{
+            Name = 'ZeroFailed'
+            Version = $ZfModuleVersion
+            Repository = $ZfModuleRepository
+            Scope = 'CurrentUser'
+            TrustRepository = $true
+        }
+        # GitHub Packages needs a token to install any package, even a public one. In GitHub Actions, the
+        # workflow's token is in GITHUB_TOKEN or GH_TOKEN, depending on the action that runs this script.
+        $gitHubToken = $env:GITHUB_TOKEN ? $env:GITHUB_TOKEN : $env:GH_TOKEN
+        if ($gitHubToken -and (Get-PSResourceRepository $ZfModuleRepository).Uri.Host -eq 'nuget.pkg.github.com') {
+            $installSplat.Credential = [pscredential]::new('token', (ConvertTo-SecureString $gitHubToken -AsPlainText -Force))
+        }
+        try {
+            Install-PSResource @installSplat
+        }
+        catch {
+            if ($ZfModuleRepository -eq 'PSGallery') { throw }
+            Write-Warning "Could not install ZeroFailed $ZfModuleVersion from '$ZfModuleRepository', so trying PSGallery: $($_.Exception.Message)"
+            $installSplat.Remove('Credential')
+            $installSplat.Repository = 'PSGallery'
+            Install-PSResource @installSplat
+        }
+    }
+    # Import the module's manifest by its path. A package from GitHub Packages is installed in a lower-case
+    # 'zerofailed' folder, which 'Import-Module ZeroFailed' does not find on a case-sensitive file system (Linux).
+    $installed = Get-InstalledPSResource ZeroFailed -Version $ZfModuleVersion | Select-Object -First 1
+    $ZfModulePath = Join-Path $installed.InstalledLocation $installed.Name ($ZfModuleVersion -split '-')[0] 'ZeroFailed.psd1'
+    if (!(Test-Path $ZfModulePath)) {
+        throw "The ZeroFailed module manifest is not in the expected location: $ZfModulePath"
+    }
+}
+else {
+    Write-Host "ZfModulePath: $ZfModulePath"
+}
+$splat.Add("Name", $ZfModulePath)
 # Ensure only 1 version of the module is loaded
 Get-Module ZeroFailed | Remove-Module
-Import-Module ZeroFailed -RequiredVersion ($ZfModuleVersion -split '-')[0] -Force -Verbose:$false
-$ver = "{0} {1}" -f (Get-Module ZeroFailed).Version, (Get-Module ZeroFailed).PrivateData.PsData.PreRelease
-Write-Host "Using ZeroFailed module version: $ver"
+Import-Module @splat
+$ver = ("{0} {1}" -f (Get-Module ZeroFailed).Version, (Get-Module ZeroFailed).PrivateData.PsData.PreRelease).Trim()
+Write-Host "Using ZeroFailed module version: $ver from $ZfModulePath"
 #endregion
+
+# ZeroFailed reads the extensions lock mode from this variable, unless ZF_EXTENSIONS_LOCK_MODE is set
+$zerofailedExtensionsLockMode = $ZfExtensionsLockMode
 
 # Load the build configuration
 . $here/.zf/config.ps1
