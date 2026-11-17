@@ -4,7 +4,7 @@ external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
 Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 10/09/2026
+ms.date: 11/17/2026
 PlatyPS schema version: 2024-05-01
 title: Invoke-ArmDeployment
 ---
@@ -20,8 +20,9 @@ Runs a single ARM deployment, or its what-if, at the scope that the deployment e
 ### __AllParameterSets
 
 ```
-Invoke-ArmDeployment [-ArmDeployment] <hashtable> [-DeploymentConfig] <IDictionary> [-WhatIfMode]
- [-ContinueOnWhatIfError] [<CommonParameters>]
+Invoke-ArmDeployment [-ArmDeployment] <hashtable> [-DeploymentConfig] <IDictionary>
+ [[-RetryErrorPatterns] <Object[]>] [[-RetryMaxAttempts] <int>] [[-RetryDelaySeconds] <int>]
+ [-WhatIfMode] [-ContinueOnWhatIfError] [<CommonParameters>]
 ```
 
 ## ALIASES
@@ -35,7 +36,9 @@ A '.bicep' or '.json' template receives its parameters from the environment conf
 A '.bicepparam' file is passed via '-TemplateParameterFile', and its 'using' statement names the template.
 The environment configuration is not passed as template parameters, and 'additionalParameters' are not supported.
 
-When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards. If the restore fails, the function throws, so that a later deployment cannot run in the wrong subscription. If the deployment has already failed, the function keeps the deployment error and reports the restore error as a warning.
+When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards.
+If the restore fails, the function throws, so that a later deployment cannot run in the wrong subscription.
+If the deployment has already failed, the function keeps the deployment error and reports the restore error as a warning.
 
 ## EXAMPLES
 
@@ -105,6 +108,77 @@ ParameterSets:
 - Name: (All)
   Position: 1
   IsRequired: true
+  ValueFromPipeline: false
+  ValueFromPipelineByPropertyName: false
+  ValueFromRemainingArguments: false
+DontShow: false
+AcceptedValues: []
+HelpMessage: ''
+```
+
+### -RetryDelaySeconds
+
+The delay before the first retry.
+Each later retry waits this delay multiplied by the number of failed attempts so far.
+Defaults to 15.
+
+```yaml
+Type: System.Int32
+DefaultValue: 15
+SupportsWildcards: false
+Aliases: []
+ParameterSets:
+- Name: (All)
+  Position: 4
+  IsRequired: false
+  ValueFromPipeline: false
+  ValueFromPipelineByPropertyName: false
+  ValueFromRemainingArguments: false
+DontShow: false
+AcceptedValues: []
+HelpMessage: ''
+```
+
+### -RetryErrorPatterns
+
+Regular expressions that identify transient errors.
+When the deployment or what-if fails and its error text matches any of the patterns, the operation is run again, up to 'RetryMaxAttempts' attempts in total.
+Each pattern is tested against the text of all the reported errors, ignoring case.
+An entry that is an array matches only when all of its patterns match.
+Any other error fails immediately.
+When empty (the default), a failure is never retried.
+
+```yaml
+Type: System.Object[]
+DefaultValue: '@()'
+SupportsWildcards: false
+Aliases: []
+ParameterSets:
+- Name: (All)
+  Position: 2
+  IsRequired: false
+  ValueFromPipeline: false
+  ValueFromPipelineByPropertyName: false
+  ValueFromRemainingArguments: false
+DontShow: false
+AcceptedValues: []
+HelpMessage: ''
+```
+
+### -RetryMaxAttempts
+
+The maximum number of attempts, including the first, when an error matches 'RetryErrorPatterns'.
+Defaults to 3.
+
+```yaml
+Type: System.Int32
+DefaultValue: 3
+SupportsWildcards: false
+Aliases: []
+ParameterSets:
+- Name: (All)
+  Position: 3
+  IsRequired: false
   ValueFromPipeline: false
   ValueFromPipelineByPropertyName: false
   ValueFromRemainingArguments: false

@@ -29,6 +29,18 @@ function Invoke-ArmDeployment
     .PARAMETER ContinueOnWhatIfError
     When specified with 'WhatIfMode', an error from the what-if operation, including a template build or validation error, is reported as a warning instead of an error.
 
+    .PARAMETER RetryErrorPatterns
+    Regular expressions that identify transient errors. When the deployment or what-if fails and its error text matches any of the patterns, the operation is run again, up to 'RetryMaxAttempts' attempts in total. Each pattern is tested against the text of all the reported errors, ignoring case. An entry that is an array matches only when all of its patterns match. Any other error fails immediately. When empty (the default), a failure is never retried.
+
+    .PARAMETER RetryMaxAttempts
+    The maximum number of attempts, including the first, when an error matches 'RetryErrorPatterns'. Defaults to 3.
+
+    .PARAMETER RetryDelaySeconds
+    The delay before the first retry. Each later retry waits this delay multiplied by the number of failed attempts so far. Defaults to 15.
+
+    .NOTES
+    Az.Resources cannot serialize a SecureString inside '-TemplateParameterObject'. A template parameter whose value is a SecureString is converted to plain text immediately before the deployment cmdlet runs, after the parameters are written to the log. Keep secret values as SecureString in the configuration so the log shows the type name instead of the value; the template's '@secure()' parameters accept the plain text, and ARM does not log them.
+
     .OUTPUTS
     The deployment result, or $null for a what-if run or a skipped deployment.
 
@@ -51,7 +63,16 @@ function Invoke-ArmDeployment
         # Deliberately not 'SupportsShouldProcess', so that '$WhatIfPreference' cannot stop the Az context switch.
         [switch] $WhatIfMode,
 
-        [switch] $ContinueOnWhatIfError
+        [switch] $ContinueOnWhatIfError,
+
+        [AllowEmptyCollection()]
+        [object[]] $RetryErrorPatterns = @(),
+
+        [ValidateRange(1, 100)]
+        [int] $RetryMaxAttempts = 3,
+
+        [ValidateRange(0, 3600)]
+        [int] $RetryDelaySeconds = 15
     )
 
     # InvokeBuild sets 'Stop' in task scope, which a module function does not inherit.
@@ -153,8 +174,23 @@ function Invoke-ArmDeployment
             Write-Host "ARM template parameters:"
             Write-Host ($parametersWithValues | Format-Table | Out-String)
 
+            # Az.Resources cannot serialize a SecureString inside '-TemplateParameterObject' ("Unable to
+            # serialize secure string value"). Convert them only now, after the parameters are written to
+            # the log (where a SecureString shows as its type name), and in a copy, so that the caller's
+            # configuration keeps the SecureString.
+            $templateParameterObject = @{}
+            foreach ($key in $parametersWithValues.Keys) {
+                $value = $parametersWithValues[$key]
+                $templateParameterObject[$key] = if ($value -is [System.Security.SecureString]) {
+                    ConvertFrom-SecureString -SecureString $value -AsPlainText
+                }
+                else {
+                    $value
+                }
+            }
+
             $deploymentParams.TemplateFile = $templatePath
-            $deploymentParams.TemplateParameterObject = $parametersWithValues
+            $deploymentParams.TemplateParameterObject = $templateParameterObject
         }
 
         if ($WhatIfMode) {
@@ -183,32 +219,56 @@ function Invoke-ArmDeployment
         # Collect all of the errors instead, and report them together.
         $deploymentParams.ErrorAction = 'SilentlyContinue'
         $deploymentParams.ErrorVariable = 'armErrors'
-        $armErrors = $null
-        $terminatingError = $null
-        try {
-            # An assignment rather than 'Tee-Object', so that the function returns the result only once
-            $deploymentResult = switch ($scope) {
-                'resourceGroup'   { New-AzResourceGroupDeployment @deploymentParams }
-                'subscription'    { New-AzSubscriptionDeployment @deploymentParams }
-                'managementGroup' { New-AzManagementGroupDeployment @deploymentParams }
-                'tenant'          { New-AzTenantDeployment @deploymentParams }
+        $operation = if ($WhatIfMode) { 'ARM what-if' } else { 'ARM deployment' }
+        $attempt = 0
+        while ($true) {
+            $attempt++
+            $armErrors = $null
+            $terminatingError = $null
+            $deploymentResult = $null
+            try {
+                # An assignment rather than 'Tee-Object', so that the function returns the result only once
+                $deploymentResult = switch ($scope) {
+                    'resourceGroup'   { New-AzResourceGroupDeployment @deploymentParams }
+                    'subscription'    { New-AzSubscriptionDeployment @deploymentParams }
+                    'managementGroup' { New-AzManagementGroupDeployment @deploymentParams }
+                    'tenant'          { New-AzTenantDeployment @deploymentParams }
+                }
             }
-        }
-        catch {
-            $terminatingError = $_
+            catch {
+                $terminatingError = $_
+            }
+
+            # Also covers a failed deployment, which Az reports as a non-terminating error beside a 'Failed' result.
+            # The error variable can also hold the terminating error, so remove duplicate messages.
+            $errorMessages = @(
+                @($armErrors) + @($terminatingError) |
+                    Where-Object { $_ } |
+                    ForEach-Object { $_.ToString().Trim() } |
+                    Where-Object { $_ } |
+                    Select-Object -Unique
+            )
+            if ($errorMessages.Count -eq 0 -or $attempt -ge $RetryMaxAttempts) {
+                break
+            }
+
+            # Retry only an error that a pattern identifies as transient; an array entry requires all of its patterns
+            $errorText = $errorMessages -join "`n"
+            $matchedPattern = $RetryErrorPatterns |
+                Where-Object { $_ } |
+                Where-Object { $patterns = @($_); @($patterns | Where-Object { $errorText -notmatch $_ }).Count -eq 0 } |
+                Select-Object -First 1
+            if (!$matchedPattern) {
+                break
+            }
+
+            $delaySeconds = $RetryDelaySeconds * $attempt
+            Write-Warning ("{0} attempt {1} of {2} failed for '{3}' with an error that matches the retry pattern '{4}' - retrying in {5}s. Errors:`n  {6}" -f `
+                $operation, $attempt, $RetryMaxAttempts, $name, (@($matchedPattern) -join "' and '"), $delaySeconds, ($errorMessages -join "`n  "))
+            Start-Sleep -Seconds $delaySeconds
         }
 
-        # Also covers a failed deployment, which Az reports as a non-terminating error beside a 'Failed' result.
-        # The error variable can also hold the terminating error, so remove duplicate messages.
-        $errorMessages = @(
-            @($armErrors) + @($terminatingError) |
-                Where-Object { $_ } |
-                ForEach-Object { $_.ToString().Trim() } |
-                Where-Object { $_ } |
-                Select-Object -Unique
-        )
         if ($errorMessages.Count -gt 0) {
-            $operation = if ($WhatIfMode) { 'ARM what-if' } else { 'ARM deployment' }
             $message = "$operation failed for '$name' (scope: $scope, deployment name: $($deploymentParams.Name)):`n  $($errorMessages -join "`n  ")"
             if ($WhatIfMode -and $ContinueOnWhatIfError) {
                 Write-Warning $message
