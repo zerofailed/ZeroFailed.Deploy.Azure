@@ -192,6 +192,19 @@ Describe 'Invoke-ArmDeployment' {
             }
         }
 
+        It 'Passes a single-item array parameter as an array' {
+            $entry = New-TestDeployment -Scope resourceGroup
+
+            Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{ allowedIps = @('10.0.0.1'); tags = @{ env = 'dev' } }
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly -ParameterFilter {
+                $TemplateParameterObject.allowedIps -is [array] -and
+                $TemplateParameterObject.allowedIps.Count -eq 1 -and
+                $TemplateParameterObject.allowedIps[0] -eq '10.0.0.1' -and
+                $TemplateParameterObject.tags -is [hashtable]
+            }
+        }
+
         It 'Keeps the parameters of two deployments separate' {
             $script:parameterSets = [System.Collections.Generic.List[hashtable]]::new()
             Mock New-AzSubscriptionDeployment { $script:parameterSets.Add($TemplateParameterObject); [PSCustomObject]@{ ProvisioningState = 'Succeeded' } }

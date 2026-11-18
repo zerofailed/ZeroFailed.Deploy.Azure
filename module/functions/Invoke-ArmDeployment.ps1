@@ -177,15 +177,16 @@ function Invoke-ArmDeployment
             # Az.Resources cannot serialize a SecureString inside '-TemplateParameterObject' ("Unable to
             # serialize secure string value"). Convert them only now, after the parameters are written to
             # the log (where a SecureString shows as its type name), and in a copy, so that the caller's
-            # configuration keeps the SecureString.
+            # configuration keeps the SecureString. Assign inside each branch: an 'if' expression would
+            # enumerate an array value, turning '@('x')' into 'x' and '@()' into $null.
             $templateParameterObject = @{}
             foreach ($key in $parametersWithValues.Keys) {
                 $value = $parametersWithValues[$key]
-                $templateParameterObject[$key] = if ($value -is [System.Security.SecureString]) {
-                    ConvertFrom-SecureString -SecureString $value -AsPlainText
+                if ($value -is [System.Security.SecureString]) {
+                    $templateParameterObject[$key] = ConvertFrom-SecureString -SecureString $value -AsPlainText
                 }
                 else {
-                    $value
+                    $templateParameterObject[$key] = $value
                 }
             }
 
