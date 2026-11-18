@@ -46,8 +46,8 @@ $PSMarkdownDocsIncludeModulePage = $false
 
 # Unit tests require these modules for mocking purposes
 $RequiredPowerShellModules = @{
-    'Az.Accounts' = @{}
-    'Az.KeyVault' = @{}
+    'Az.Accounts' = @{ repository = 'PSGallery' }
+    'Az.KeyVault' = @{ repository = 'PSGallery' }
 }
 
 $CreateGitHubRelease = $true
