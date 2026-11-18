@@ -19,10 +19,7 @@ task deployArmTemplates -If { !$SkipArmDeployments -and $null -ne $RequiredArmDe
         $deploymentResult = Invoke-ArmDeployment -ArmDeployment $armDeployment `
                                                  -DeploymentConfig $script:DeploymentConfig `
                                                  -WhatIfMode:$ArmWhatIfMode `
-                                                 -ContinueOnWhatIfError:$ArmWhatIfContinueOnError `
-                                                 -RetryErrorPatterns $ArmDeploymentRetryErrorPatterns `
-                                                 -RetryMaxAttempts $ArmDeploymentRetryMaxAttempts `
-                                                 -RetryDelaySeconds $ArmDeploymentRetryDelaySeconds
+                                                 -ContinueOnWhatIfError:$ArmWhatIfContinueOnError
 
         if ($ArmWhatIfMode) {
             # What-if does not produce a deployment result, so there are no outputs to process

@@ -75,9 +75,6 @@ This group contains features for managing Azure Resource Manager deployments (us
 
 | Name                      | Default Value | ENV Override                          | Description                                                                                                                                                                                         |
 | ------------------------- | ------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ArmDeploymentRetryDelaySeconds` | 15     | `ZF_DEPLOY_ARM_DEPLOYMENT_RETRY_DELAY_SECONDS` | The delay in seconds before the first retry of an ARM deployment. Each later retry waits this delay multiplied by the number of failed attempts so far. See [note below](#retrying-transient-arm-deployment-errors). |
-| `ArmDeploymentRetryErrorPatterns` | @()   |                                       | Regular expressions that identify transient ARM deployment errors. A failed deployment or what-if whose errors match one of them is run again. When empty, a failure is never retried. See [note below](#retrying-transient-arm-deployment-errors). |
-| `ArmDeploymentRetryMaxAttempts` | 3       | `ZF_DEPLOY_ARM_DEPLOYMENT_RETRY_MAX_ATTEMPTS` | The maximum number of attempts, including the first, for an ARM deployment that fails with an error matching `ArmDeploymentRetryErrorPatterns`. |
 | `ArmWhatIfMode`           | $false        | `ZF_DEPLOY_ARM_WHATIF_MODE`           | When true, ARM deployments are run in 'what-if' mode, which reports the changes that would be made without deploying anything. Applies to all configured ARM deployments. See [note below](#armwhatifmode). |
 | `ArmWhatIfContinueOnError` | $false       | `ZF_DEPLOY_ARM_WHATIF_CONTINUE_ON_ERROR` | When true, and `ArmWhatIfMode` is true, any error from a what-if operation is reported as a warning and the remaining deployments continue. This includes template build and validation errors, such as a Bicep compile error or a missing template file. Errors in the `RequiredArmDeployments` configuration itself still fail the build. |
 | `ForceBicepVersionCheck`  |               | `ZF_DEPLOY_FORCE_BICEP_VERSION_CHECK` | When true, the available Bicep CLI version will be checked, even if the ARM deployment does not reference a Bicep template.                                                                         |
@@ -123,9 +120,12 @@ $RequiredArmDeployments = @(
             someParameter = 'foo'               # a static value
             anotherParameter = { Get-Date }     # a dynamic value that will be evaluated at runtime
         }
+        retryErrorPatterns = @('RetryableError')    # Optional. See 'Retrying transient ARM deployment errors' below.
     }
 )
 ```
+
+The optional `retryErrorPatterns`, `retryMaxAttempts` and `retryDelaySeconds` settings retry transient errors for this deployment only. See [Retrying transient ARM deployment errors](#retrying-transient-arm-deployment-errors).
 
 The optional `scope` setting controls the ARM deployment scope. When omitted it defaults to `resourceGroup`. Supported values (case-insensitive) and the settings each requires are:
 
@@ -172,21 +172,39 @@ When an ARM deployment or what-if fails, the error message contains every error 
 
 #### Retrying transient ARM deployment errors
 
-Some ARM deployment errors are transient and clear when the same deployment is run again, for example a race in an Azure resource provider. To retry these errors, list regular expressions that identify them in `ArmDeploymentRetryErrorPatterns`:
+Some ARM deployment errors are transient and clear when the same deployment is run again, for example a race in an Azure resource provider. To retry these errors, set these optional keys on the deployment's entry in `RequiredArmDeployments`:
+
+| Key                  | Default | Description |
+| -------------------- | ------- | ----------- |
+| `retryErrorPatterns` | none    | Regular expressions that identify the deployment's transient errors. Without them, a failure is never retried. |
+| `retryMaxAttempts`   | 3       | The maximum number of attempts, including the first. An integer from 1 to 100. |
+| `retryDelaySeconds`  | 15      | The delay before the first retry. Each later retry waits this delay multiplied by the number of failed attempts so far. An integer from 0 to 3600. |
 
 ```powershell
-$ArmDeploymentRetryErrorPatterns = @(
-    'RetryableError'                                                                     # one pattern
-    , @('Unable to get value using Managed identity', 'InvalidParameterValueInContainerTemplate')   # an array: all of its patterns must match
+$RequiredArmDeployments = @(
+    @{
+        templatePath = 'container-apps.bicep'
+        resourceGroupName = { $deploymentConfig.resourceGroupName }
+        location = 'uksouth'
+        retryErrorPatterns = @(
+            'RetryableError'                                            # one pattern
+            , @(                                                        # an array: all of its patterns must match
+                'Unable to get value using Managed identity'
+                'InvalidParameterValueInContainerTemplate'
+            )
+        )
+        retryMaxAttempts = 4
+        retryDelaySeconds = 15
+    }
 )
-$ArmDeploymentRetryMaxAttempts = 4
-$ArmDeploymentRetryDelaySeconds = 15
 ```
 
+- The settings apply only to the deployment whose entry sets them, because a pattern for one template's transient error can match a real failure in another template.
+- The settings are static values. A scriptblock is not supported.
 - Each pattern is tested, ignoring case, against the text of all the errors that the deployment reports, including inner errors and errors that Az reports beside a `Failed` result.
-- A failure is retried when any entry matches. An entry that is an array matches only when all of its patterns match.
+- A failure is retried when any entry matches. An entry that is an array matches only when all of its patterns match. Use the leading comma (`, @(...)`) so that PowerShell keeps the array as one entry.
 - Any other error fails the deployment immediately, as when no patterns are set.
-- Each retry writes a warning with the errors, then waits `ArmDeploymentRetryDelaySeconds` multiplied by the number of failed attempts so far (with the values above: 15s, 30s, 45s).
+- Each retry writes a warning with the errors, then waits `retryDelaySeconds` multiplied by the number of failed attempts so far (with the values above: 15s, 30s, 45s).
 - A retry runs the same deployment again, with the same deployment name. ARM deployments are incremental by default, so this is safe for a template that is safe to re-deploy.
 - What-if operations are retried in the same way. With `ArmWhatIfContinueOnError`, the warning is reported only after the last attempt.
 

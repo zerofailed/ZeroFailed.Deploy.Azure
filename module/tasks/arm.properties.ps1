@@ -14,15 +14,6 @@ $ArmWhatIfMode = [Convert]::ToBoolean((property ZF_DEPLOY_ARM_WHATIF_MODE $false
 # Synopsis: When true, and 'ArmWhatIfMode' is true, a failed what-if operation is reported as a warning and the remaining deployments continue. Defaults to false.
 $ArmWhatIfContinueOnError = [Convert]::ToBoolean((property ZF_DEPLOY_ARM_WHATIF_CONTINUE_ON_ERROR $false))
 
-# Synopsis: Regular expressions that identify transient ARM deployment errors. A failed deployment or what-if whose errors match any of them is run again, up to 'ArmDeploymentRetryMaxAttempts' attempts. An entry that is an array matches only when all of its patterns match. Defaults to empty, so a failure is never retried.
-$ArmDeploymentRetryErrorPatterns = @()
-
-# Synopsis: The maximum number of attempts, including the first, for an ARM deployment that fails with an error matching 'ArmDeploymentRetryErrorPatterns'. Defaults to 3.
-$ArmDeploymentRetryMaxAttempts = [int](property ZF_DEPLOY_ARM_DEPLOYMENT_RETRY_MAX_ATTEMPTS 3)
-
-# Synopsis: The delay in seconds before the first retry of an ARM deployment. Each later retry waits this delay multiplied by the number of failed attempts so far. Defaults to 15.
-$ArmDeploymentRetryDelaySeconds = [int](property ZF_DEPLOY_ARM_DEPLOYMENT_RETRY_DELAY_SECONDS 15)
-
 # Synopsis: When using Bicep templates, ensures that the specified Bicep CLI version is used; installing via Azure CLI if it is missing. When blank any version is considered acceptable. Use 'latest' to ensure the most current release.
 $RequiredBicepVersion = property ZF_DEPLOY_REQUIRED_BICEP_VERSION ''
 

@@ -17,8 +17,10 @@ function Invoke-ArmDeployment
 
     When the entry has a 'subscriptionId', the Az context of the current process is switched to that subscription before any other value is evaluated, and restored afterwards. If the restore fails, the function throws, so that a later deployment cannot run in the wrong subscription. If the deployment has already failed, the function keeps the deployment error and reports the restore error as a warning.
 
+    The entry's 'retryErrorPatterns' are regular expressions that identify transient errors. When the deployment or what-if fails and its error text matches any of the patterns, the operation runs again, up to 'retryMaxAttempts' attempts in total (default 3). Each pattern is tested against the text of all the reported errors, ignoring case. An entry that is an array matches only when all of its patterns match. Any other error fails immediately. Each retry waits 'retryDelaySeconds' (default 15) multiplied by the number of failed attempts so far. Without 'retryErrorPatterns', a failure is never retried. The retry settings apply only to this deployment, and are static values: a scriptblock is not supported.
+
     .PARAMETER ArmDeployment
-    The deployment entry. Supported keys: 'templatePath', 'location', 'scope' ('resourceGroup' (the default), 'subscription', 'managementGroup' or 'tenant'), 'resourceGroupName', 'managementGroupId', 'subscriptionId', 'additionalParameters' and 'configKeysToIgnore'.
+    The deployment entry. Supported keys: 'templatePath', 'location', 'scope' ('resourceGroup' (the default), 'subscription', 'managementGroup' or 'tenant'), 'resourceGroupName', 'managementGroupId', 'subscriptionId', 'additionalParameters', 'configKeysToIgnore', 'retryErrorPatterns', 'retryMaxAttempts' (1 to 100) and 'retryDelaySeconds' (0 to 3600).
 
     .PARAMETER DeploymentConfig
     The environment configuration, whose non-empty values become template parameters for a '.bicep' or '.json' template.
@@ -28,15 +30,6 @@ function Invoke-ArmDeployment
 
     .PARAMETER ContinueOnWhatIfError
     When specified with 'WhatIfMode', an error from the what-if operation, including a template build or validation error, is reported as a warning instead of an error.
-
-    .PARAMETER RetryErrorPatterns
-    Regular expressions that identify transient errors. When the deployment or what-if fails and its error text matches any of the patterns, the operation is run again, up to 'RetryMaxAttempts' attempts in total. Each pattern is tested against the text of all the reported errors, ignoring case. An entry that is an array matches only when all of its patterns match. Any other error fails immediately. When empty (the default), a failure is never retried.
-
-    .PARAMETER RetryMaxAttempts
-    The maximum number of attempts, including the first, when an error matches 'RetryErrorPatterns'. Defaults to 3.
-
-    .PARAMETER RetryDelaySeconds
-    The delay before the first retry. Each later retry waits this delay multiplied by the number of failed attempts so far. Defaults to 15.
 
     .NOTES
     Az.Resources cannot serialize a SecureString inside '-TemplateParameterObject'. A template parameter whose value is a SecureString is converted to plain text immediately before the deployment cmdlet runs, after the parameters are written to the log. Keep secret values as SecureString in the configuration so the log shows the type name instead of the value; the template's '@secure()' parameters accept the plain text, and ARM does not log them.
@@ -50,6 +43,22 @@ function Invoke-ArmDeployment
     ```
 
     Deploys a Bicep parameters file at subscription scope, to the specified subscription.
+
+    .EXAMPLE
+    ```powershell
+    $entry = @{
+        templatePath = './main.bicep'
+        resourceGroupName = 'rg-app'
+        location = 'uksouth'
+        retryErrorPatterns = @(
+            , @('Unable to get value using Managed identity', 'InvalidParameterValueInContainerTemplate')
+        )
+        retryMaxAttempts = 4
+    }
+    Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{}
+    ```
+
+    Deploys a template, and retries up to 3 times, after 15, 30 and 45 seconds, when an error matches both patterns.
     #>
     [CmdletBinding()]
     param (
@@ -63,16 +72,7 @@ function Invoke-ArmDeployment
         # Deliberately not 'SupportsShouldProcess', so that '$WhatIfPreference' cannot stop the Az context switch.
         [switch] $WhatIfMode,
 
-        [switch] $ContinueOnWhatIfError,
-
-        [AllowEmptyCollection()]
-        [object[]] $RetryErrorPatterns = @(),
-
-        [ValidateRange(1, 100)]
-        [int] $RetryMaxAttempts = 3,
-
-        [ValidateRange(0, 3600)]
-        [int] $RetryDelaySeconds = 15
+        [switch] $ContinueOnWhatIfError
     )
 
     # InvokeBuild sets 'Stop' in task scope, which a module function does not inherit.
@@ -101,6 +101,28 @@ function Invoke-ArmDeployment
     if ($subscriptionId -and $scope -notin @('resourceGroup', 'subscription')) {
         throw "Unable to process 'RequiredArmDeployments' configuration for scope '$scope': 'subscriptionId' is only supported at 'resourceGroup' and 'subscription' scope"
     }
+
+    # Retry settings are static values, read without 'Resolve-Value' and assigned without an 'if'
+    # expression: both send the value through the pipeline, which unwraps the outer array, so the only
+    # entry of '@(, @('a', 'b'))' would become two separate patterns.
+    $retryErrorPatterns = @()
+    if ($ArmDeployment.ContainsKey('retryErrorPatterns') -and $null -ne $ArmDeployment.retryErrorPatterns) {
+        $retryErrorPatterns = $ArmDeployment.retryErrorPatterns
+    }
+    $getRetryNumber = {
+        param ([string] $Key, [int] $Default, [int] $Minimum, [int] $Maximum)
+        if (!$ArmDeployment.ContainsKey($Key) -or $null -eq $ArmDeployment[$Key]) {
+            return $Default
+        }
+        $value = $ArmDeployment[$Key]
+        $number = 0
+        if (!([int]::TryParse("$value", [ref] $number)) -or $number -lt $Minimum -or $number -gt $Maximum) {
+            throw "Unable to process 'RequiredArmDeployments' configuration: '$Key' must be an integer from $Minimum to $Maximum, but is '$value'"
+        }
+        $number
+    }
+    $retryMaxAttempts = & $getRetryNumber 'retryMaxAttempts' 3 1 100
+    $retryDelaySeconds = & $getRetryNumber 'retryDelaySeconds' 15 0 3600
 
     $savedContext = $null
     $isPropagatingError = $false
@@ -249,13 +271,13 @@ function Invoke-ArmDeployment
                     Where-Object { $_ } |
                     Select-Object -Unique
             )
-            if ($errorMessages.Count -eq 0 -or $attempt -ge $RetryMaxAttempts) {
+            if ($errorMessages.Count -eq 0 -or $attempt -ge $retryMaxAttempts) {
                 break
             }
 
             # Retry only an error that a pattern identifies as transient; an array entry requires all of its patterns
             $errorText = $errorMessages -join "`n"
-            $matchedPattern = $RetryErrorPatterns |
+            $matchedPattern = $retryErrorPatterns |
                 Where-Object { $_ } |
                 Where-Object { $patterns = @($_); @($patterns | Where-Object { $errorText -notmatch $_ }).Count -eq 0 } |
                 Select-Object -First 1
@@ -263,9 +285,9 @@ function Invoke-ArmDeployment
                 break
             }
 
-            $delaySeconds = $RetryDelaySeconds * $attempt
+            $delaySeconds = $retryDelaySeconds * $attempt
             Write-Warning ("{0} attempt {1} of {2} failed for '{3}' with an error that matches the retry pattern '{4}' - retrying in {5}s. Errors:`n  {6}" -f `
-                $operation, $attempt, $RetryMaxAttempts, $name, (@($matchedPattern) -join "' and '"), $delaySeconds, ($errorMessages -join "`n  "))
+                $operation, $attempt, $retryMaxAttempts, $name, (@($matchedPattern) -join "' and '"), $delaySeconds, ($errorMessages -join "`n  "))
             Start-Sleep -Seconds $delaySeconds
         }
 

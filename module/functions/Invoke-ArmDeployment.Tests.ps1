@@ -491,6 +491,18 @@ Describe 'Invoke-ArmDeployment' {
 
     Context 'Retrying transient errors' {
 
+        BeforeAll {
+            # A resource group deployment entry with the given retry settings; omitted settings are not set
+            function New-RetryDeployment {
+                param ($Patterns, $MaxAttempts, $DelaySeconds)
+                $entry = New-TestDeployment -Scope resourceGroup
+                if ($PSBoundParameters.ContainsKey('Patterns')) { $entry.retryErrorPatterns = $Patterns }
+                if ($PSBoundParameters.ContainsKey('MaxAttempts')) { $entry.retryMaxAttempts = $MaxAttempts }
+                if ($PSBoundParameters.ContainsKey('DelaySeconds')) { $entry.retryDelaySeconds = $DelaySeconds }
+                return $entry
+            }
+        }
+
         BeforeEach {
             Mock Start-Sleep {}
             $script:attempts = 0
@@ -508,9 +520,9 @@ Describe 'Invoke-ArmDeployment' {
 
         It 'Retries an error that matches a pattern, and returns the successful result' {
             $script:failuresBeforeSuccess = 2
+            $entry = New-RetryDeployment -Patterns 'Unable to get value using Managed identity' -MaxAttempts 4 -DelaySeconds 10
 
-            $result = Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} `
-                -RetryErrorPatterns 'Unable to get value using Managed identity' -RetryMaxAttempts 4 -RetryDelaySeconds 10
+            $result = Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{}
 
             $result.ProvisioningState | Should -Be 'Succeeded'
             @($result).Count | Should -Be 1
@@ -518,6 +530,27 @@ Describe 'Invoke-ArmDeployment' {
             Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 10 }
             Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 20 }
             Should -Invoke Write-Warning -Times 2 -Exactly -ParameterFilter { $Message -like '*ARM deployment attempt * of 4 failed*retrying*' }
+        }
+
+        It 'Uses 3 attempts and a 15 second delay by default' {
+            $script:failuresBeforeSuccess = 99
+
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig @{} } | Should -Throw
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 3 -Exactly
+            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 15 }
+            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 30 }
+        }
+
+        It 'Applies the retry settings only to their own deployment' {
+            $script:failuresBeforeSuccess = 99
+
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity' -MaxAttempts 2) -DeploymentConfig @{} } | Should -Throw
+            Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly
+
+            $script:attempts = 0
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment) -DeploymentConfig @{} } | Should -Throw
+            Should -Invoke New-AzResourceGroupDeployment -Times 3 -Exactly
         }
 
         It 'Uses the same deployment name for every attempt' {
@@ -529,7 +562,7 @@ Describe 'Invoke-ArmDeployment' {
                 if ($script:attempts -le 1) { Write-Error $script:failureMessage }
             }
 
-            Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} -RetryErrorPatterns 'Managed identity'
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig @{}
 
             $script:names.Count | Should -Be 2
             $script:names[1] | Should -Be $script:names[0]
@@ -538,8 +571,7 @@ Describe 'Invoke-ArmDeployment' {
         It 'Throws all the errors after the last attempt' {
             $script:failuresBeforeSuccess = 99
 
-            { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} `
-                -RetryErrorPatterns 'Managed identity' -RetryMaxAttempts 3 } |
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity' -MaxAttempts 3) -DeploymentConfig @{} } |
                 Should -Throw '*ARM deployment failed*Unable to get value using Managed identity*'
 
             Should -Invoke New-AzResourceGroupDeployment -Times 3 -Exactly
@@ -550,7 +582,7 @@ Describe 'Invoke-ArmDeployment' {
             $script:failuresBeforeSuccess = 1
             $script:failureMessage = 'Error: Code=AccountNameInvalid; Message=Bad name.'
 
-            { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} -RetryErrorPatterns 'Managed identity' } |
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig @{} } |
                 Should -Throw '*AccountNameInvalid*'
 
             Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly
@@ -560,7 +592,7 @@ Describe 'Invoke-ArmDeployment' {
         It 'Does not retry without any patterns' {
             $script:failuresBeforeSuccess = 1
 
-            { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} } | Should -Throw '*Managed identity*'
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -MaxAttempts 5) -DeploymentConfig @{} } | Should -Throw '*Managed identity*'
 
             Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly
         }
@@ -573,7 +605,7 @@ Describe 'Invoke-ArmDeployment' {
                 [PSCustomObject]@{ ProvisioningState = 'Succeeded' }
             }
 
-            $result = Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} -RetryErrorPatterns 'transient conflict'
+            $result = Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'transient conflict') -DeploymentConfig @{}
 
             $result.ProvisioningState | Should -Be 'Succeeded'
             Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly
@@ -584,18 +616,32 @@ Describe 'Invoke-ArmDeployment' {
             @{ Description = 'one does not match'; Patterns = @('Managed identity', 'SomethingElse'); ExpectedCalls = 1 }
         ) {
             $script:failuresBeforeSuccess = 1
+            $entry = New-TestDeployment -Scope resourceGroup
             # The comma keeps the array as a single entry
-            $retryPatterns = @(, $Patterns)
+            $entry.retryErrorPatterns = @(, $Patterns)
 
-            try { Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} -RetryErrorPatterns $retryPatterns } catch {}
+            try { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } catch {}
 
             Should -Invoke New-AzResourceGroupDeployment -Times $ExpectedCalls -Exactly
+        }
+
+        It 'Keeps the only array entry as one entry, written as in a config file' {
+            $script:failuresBeforeSuccess = 1
+            # If the outer array were unwrapped, each pattern would become an entry of its own, and the first would match
+            $entry = New-TestDeployment -Scope resourceGroup
+            $entry.retryErrorPatterns = @(
+                , @('Managed identity', 'SomethingElse')
+            )
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } | Should -Throw '*Managed identity*'
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly
         }
 
         It 'Matches patterns as case-insensitive regular expressions' {
             $script:failuresBeforeSuccess = 1
 
-            Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} -RetryErrorPatterns 'unable to get value using managed\s+IDENTITY'
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'unable to get value using managed\s+IDENTITY') -DeploymentConfig @{}
 
             Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly
         }
@@ -604,7 +650,7 @@ Describe 'Invoke-ArmDeployment' {
             $script:failuresBeforeSuccess = 1
             $config = @{ secret = (ConvertTo-SecureString 's3cret' -AsPlainText -Force) }
 
-            Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig $config -RetryErrorPatterns 'Managed identity'
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig $config
 
             Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly -ParameterFilter { $TemplateParameterObject.secret -eq 's3cret' }
         }
@@ -612,11 +658,27 @@ Describe 'Invoke-ArmDeployment' {
         It 'Retries a what-if before reporting it as a warning with ContinueOnWhatIfError' {
             $script:failuresBeforeSuccess = 99
 
-            Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig @{} `
-                -WhatIfMode -ContinueOnWhatIfError -RetryErrorPatterns 'Managed identity' -RetryMaxAttempts 2 | Should -BeNullOrEmpty
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity' -MaxAttempts 2) -DeploymentConfig @{} `
+                -WhatIfMode -ContinueOnWhatIfError | Should -BeNullOrEmpty
 
             Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly -ParameterFilter { $WhatIf }
             Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like '*ARM what-if failed*' }
+        }
+
+        It 'Throws for <Key> = <Value>, before deploying' -ForEach @(
+            @{ Key = 'retryMaxAttempts'; Value = 0 }
+            @{ Key = 'retryMaxAttempts'; Value = 101 }
+            @{ Key = 'retryMaxAttempts'; Value = 'abc' }
+            @{ Key = 'retryMaxAttempts'; Value = 1.5 }
+            @{ Key = 'retryDelaySeconds'; Value = -1 }
+            @{ Key = 'retryDelaySeconds'; Value = 3601 }
+        ) {
+            $entry = New-RetryDeployment -Patterns 'Managed identity'
+            $entry[$Key] = $Value
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } | Should -Throw "*'$Key' must be an integer*"
+
+            Should -Not -Invoke New-AzResourceGroupDeployment
         }
     }
 }
@@ -642,12 +704,9 @@ Describe 'Module wiring' {
         $armTasks | Should -Match 'Invoke-ArmDeployment\s+-ArmDeployment'
     }
 
-    It 'Passes the <Parameter> setting from the deployArmTemplates task' -ForEach @(
-        @{ Parameter = 'RetryErrorPatterns'; Property = 'ArmDeploymentRetryErrorPatterns' }
-        @{ Parameter = 'RetryMaxAttempts'; Property = 'ArmDeploymentRetryMaxAttempts' }
-        @{ Parameter = 'RetryDelaySeconds'; Property = 'ArmDeploymentRetryDelaySeconds' }
-    ) {
-        $armTasks | Should -Match "-$Parameter\s+\`$$Property\b"
+    It 'Leaves the retry settings to each deployment entry, with no global setting in the task' {
+        $armTasks | Should -Not -Match '-Retry'
+        $armTasks | Should -Not -Match 'ArmDeploymentRetry'
     }
 
     It 'Treats <Description> as a Bicep deployment in ensureBicepVersion: <Expected>' -ForEach @(

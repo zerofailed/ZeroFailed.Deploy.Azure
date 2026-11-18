@@ -4,7 +4,7 @@ external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
 Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 11/17/2026
+ms.date: 11/18/2026
 PlatyPS schema version: 2024-05-01
 title: Invoke-ArmDeployment
 ---
@@ -20,9 +20,8 @@ Runs a single ARM deployment, or its what-if, at the scope that the deployment e
 ### __AllParameterSets
 
 ```
-Invoke-ArmDeployment [-ArmDeployment] <hashtable> [-DeploymentConfig] <IDictionary>
- [[-RetryErrorPatterns] <Object[]>] [[-RetryMaxAttempts] <int>] [[-RetryDelaySeconds] <int>]
- [-WhatIfMode] [-ContinueOnWhatIfError] [<CommonParameters>]
+Invoke-ArmDeployment [-ArmDeployment] <hashtable> [-DeploymentConfig] <IDictionary> [-WhatIfMode]
+ [-ContinueOnWhatIfError] [<CommonParameters>]
 ```
 
 ## ALIASES
@@ -40,6 +39,15 @@ When the entry has a 'subscriptionId', the Az context of the current process is 
 If the restore fails, the function throws, so that a later deployment cannot run in the wrong subscription.
 If the deployment has already failed, the function keeps the deployment error and reports the restore error as a warning.
 
+The entry's 'retryErrorPatterns' are regular expressions that identify transient errors.
+When the deployment or what-if fails and its error text matches any of the patterns, the operation runs again, up to 'retryMaxAttempts' attempts in total (default 3).
+Each pattern is tested against the text of all the reported errors, ignoring case.
+An entry that is an array matches only when all of its patterns match.
+Any other error fails immediately.
+Each retry waits 'retryDelaySeconds' (default 15) multiplied by the number of failed attempts so far.
+Without 'retryErrorPatterns', a failure is never retried.
+The retry settings apply only to this deployment, and are static values: a scriptblock is not supported.
+
 ## EXAMPLES
 
 ### EXAMPLE 1
@@ -50,12 +58,29 @@ Invoke-ArmDeployment -ArmDeployment @{ scope = 'subscription'; templatePath = '.
 
 Deploys a Bicep parameters file at subscription scope, to the specified subscription.
 
+### EXAMPLE 2
+
+```powershell
+$entry = @{
+    templatePath = './main.bicep'
+    resourceGroupName = 'rg-app'
+    location = 'uksouth'
+    retryErrorPatterns = @(
+        , @('Unable to get value using Managed identity', 'InvalidParameterValueInContainerTemplate')
+    )
+    retryMaxAttempts = 4
+}
+Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{}
+```
+
+Deploys a template, and retries up to 3 times, after 15, 30 and 45 seconds, when an error matches both patterns.
+
 ## PARAMETERS
 
 ### -ArmDeployment
 
 The deployment entry.
-Supported keys: 'templatePath', 'location', 'scope' ('resourceGroup' (the default), 'subscription', 'managementGroup' or 'tenant'), 'resourceGroupName', 'managementGroupId', 'subscriptionId', 'additionalParameters' and 'configKeysToIgnore'.
+Supported keys: 'templatePath', 'location', 'scope' ('resourceGroup' (the default), 'subscription', 'managementGroup' or 'tenant'), 'resourceGroupName', 'managementGroupId', 'subscriptionId', 'additionalParameters', 'configKeysToIgnore', 'retryErrorPatterns', 'retryMaxAttempts' (1 to 100) and 'retryDelaySeconds' (0 to 3600).
 
 ```yaml
 Type: System.Collections.Hashtable
@@ -116,77 +141,6 @@ AcceptedValues: []
 HelpMessage: ''
 ```
 
-### -RetryDelaySeconds
-
-The delay before the first retry.
-Each later retry waits this delay multiplied by the number of failed attempts so far.
-Defaults to 15.
-
-```yaml
-Type: System.Int32
-DefaultValue: 15
-SupportsWildcards: false
-Aliases: []
-ParameterSets:
-- Name: (All)
-  Position: 4
-  IsRequired: false
-  ValueFromPipeline: false
-  ValueFromPipelineByPropertyName: false
-  ValueFromRemainingArguments: false
-DontShow: false
-AcceptedValues: []
-HelpMessage: ''
-```
-
-### -RetryErrorPatterns
-
-Regular expressions that identify transient errors.
-When the deployment or what-if fails and its error text matches any of the patterns, the operation is run again, up to 'RetryMaxAttempts' attempts in total.
-Each pattern is tested against the text of all the reported errors, ignoring case.
-An entry that is an array matches only when all of its patterns match.
-Any other error fails immediately.
-When empty (the default), a failure is never retried.
-
-```yaml
-Type: System.Object[]
-DefaultValue: '@()'
-SupportsWildcards: false
-Aliases: []
-ParameterSets:
-- Name: (All)
-  Position: 2
-  IsRequired: false
-  ValueFromPipeline: false
-  ValueFromPipelineByPropertyName: false
-  ValueFromRemainingArguments: false
-DontShow: false
-AcceptedValues: []
-HelpMessage: ''
-```
-
-### -RetryMaxAttempts
-
-The maximum number of attempts, including the first, when an error matches 'RetryErrorPatterns'.
-Defaults to 3.
-
-```yaml
-Type: System.Int32
-DefaultValue: 3
-SupportsWildcards: false
-Aliases: []
-ParameterSets:
-- Name: (All)
-  Position: 3
-  IsRequired: false
-  ValueFromPipeline: false
-  ValueFromPipelineByPropertyName: false
-  ValueFromRemainingArguments: false
-DontShow: false
-AcceptedValues: []
-HelpMessage: ''
-```
-
 ### -WhatIfMode
 
 When specified, runs the ARM what-if operation instead of a deployment.
@@ -237,6 +191,10 @@ The deployment result at subscription, management group or tenant scope.
 The function returns $null for a what-if run or a skipped deployment.
 
 ## NOTES
+
+Az.Resources cannot serialize a SecureString inside '-TemplateParameterObject'.
+A template parameter whose value is a SecureString is converted to plain text immediately before the deployment cmdlet runs, after the parameters are written to the log.
+Keep secret values as SecureString in the configuration so the log shows the type name instead of the value; the template's '@secure()' parameters accept the plain text, and ARM does not log them.
 
 ## RELATED LINKS
 
