@@ -22,15 +22,35 @@ $PowerShellModulesToPublish = @(
         AliasesToExport = @()
     }
 )
+$PowerShellRepositories = @(
+    @{
+        Name = 'PSGallery'
+        ApiKey = { $PSRepositoryApiKey }
+        BlockPreReleaseVersions = $true
+    }
+    @{
+        Name = 'GitHubPackages'
+        SourceLocation = 'https://nuget.pkg.github.com/zerofailed/index.json'
+        ApiKey = { $env:ZF_BUILD_GITHUB_PACKAGES_TOKEN }
+        Credential = {
+            if ($env:ZF_BUILD_GITHUB_PACKAGES_TOKEN) {
+                [pscredential]::new('github-actions', (ConvertTo-SecureString $env:ZF_BUILD_GITHUB_PACKAGES_TOKEN -AsPlainText -Force))
+            }
+        }
+    }
+)
+
 $PSMarkdownDocsOutputPath = 'docs/functions'
 $PSMarkdownDocsFlattenOutputPath = $true
 $PSMarkdownDocsIncludeModulePage = $false
 
 # Unit tests require these modules for mocking purposes
 $RequiredPowerShellModules = @{
-    'Az.Accounts' = @{}
-    'Az.KeyVault' = @{}
+    'Az.Accounts' = @{ repository = 'PSGallery' }
+    'Az.KeyVault' = @{ repository = 'PSGallery' }
 }
+
+$CreateGitHubRelease = $true
 
 # Customise the build process
 task . FullBuild

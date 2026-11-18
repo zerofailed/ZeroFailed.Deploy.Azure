@@ -192,6 +192,19 @@ Describe 'Invoke-ArmDeployment' {
             }
         }
 
+        It 'Passes a single-item array parameter as an array' {
+            $entry = New-TestDeployment -Scope resourceGroup
+
+            Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{ allowedIps = @('10.0.0.1'); tags = @{ env = 'dev' } }
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly -ParameterFilter {
+                $TemplateParameterObject.allowedIps -is [array] -and
+                $TemplateParameterObject.allowedIps.Count -eq 1 -and
+                $TemplateParameterObject.allowedIps[0] -eq '10.0.0.1' -and
+                $TemplateParameterObject.tags -is [hashtable]
+            }
+        }
+
         It 'Keeps the parameters of two deployments separate' {
             $script:parameterSets = [System.Collections.Generic.List[hashtable]]::new()
             Mock New-AzSubscriptionDeployment { $script:parameterSets.Add($TemplateParameterObject); [PSCustomObject]@{ ProvisioningState = 'Succeeded' } }
@@ -436,6 +449,238 @@ Describe 'Invoke-ArmDeployment' {
             { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} -WhatIfMode -ContinueOnWhatIfError } | Should -Throw '*unsupported scope*'
         }
     }
+
+    Context 'SecureString template parameters' {
+
+        It 'Passes a SecureString from <Source> to the cmdlet as plain text' -ForEach @(
+            @{ Source = 'the environment config' }
+            @{ Source = 'additionalParameters' }
+        ) {
+            $secret = ConvertTo-SecureString 's3cret' -AsPlainText -Force
+            $entry = New-TestDeployment -Scope resourceGroup
+            $config = @{ plain = 'v1' }
+            if ($Source -eq 'additionalParameters') { $entry.additionalParameters = @{ secret = { $secret } } }
+            else { $config.secret = $secret }
+
+            Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig $config
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly -ParameterFilter {
+                $TemplateParameterObject.secret -is [string] -and
+                $TemplateParameterObject.secret -eq 's3cret' -and
+                $TemplateParameterObject.plain -eq 'v1'
+            }
+        }
+
+        It 'Leaves the SecureString in the caller''s configuration' {
+            $config = @{ secret = (ConvertTo-SecureString 's3cret' -AsPlainText -Force) }
+
+            Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig $config
+
+            $config.secret | Should -BeOfType [System.Security.SecureString]
+        }
+
+        It 'Does not write the secret value to the log' {
+            $config = @{ secret = (ConvertTo-SecureString 's3cret' -AsPlainText -Force) }
+
+            Invoke-ArmDeployment -ArmDeployment (New-TestDeployment -Scope resourceGroup) -DeploymentConfig $config
+
+            Should -Invoke Write-Host -ParameterFilter { "$Object" -like '*System.Security.SecureString*' }
+            Should -Not -Invoke Write-Host -ParameterFilter { "$Object" -like '*s3cret*' }
+        }
+    }
+
+    Context 'Retrying transient errors' {
+
+        BeforeAll {
+            # A resource group deployment entry with the given retry settings; omitted settings are not set
+            function New-RetryDeployment {
+                param ($Patterns, $MaxAttempts, $DelaySeconds)
+                $entry = New-TestDeployment -Scope resourceGroup
+                if ($PSBoundParameters.ContainsKey('Patterns')) { $entry.retryErrorPatterns = $Patterns }
+                if ($PSBoundParameters.ContainsKey('MaxAttempts')) { $entry.retryMaxAttempts = $MaxAttempts }
+                if ($PSBoundParameters.ContainsKey('DelaySeconds')) { $entry.retryDelaySeconds = $DelaySeconds }
+                return $entry
+            }
+        }
+
+        BeforeEach {
+            Mock Start-Sleep {}
+            $script:attempts = 0
+            # Fails like Az does for a failed deployment: a non-terminating error beside a 'Failed' result
+            Mock New-AzResourceGroupDeployment {
+                $script:attempts++
+                if ($script:attempts -le $script:failuresBeforeSuccess) {
+                    Write-Error $script:failureMessage
+                    return [PSCustomObject]@{ ProvisioningState = 'Failed'; Outputs = $null }
+                }
+                [PSCustomObject]@{ ProvisioningState = 'Succeeded'; Outputs = @{} }
+            }
+            $script:failureMessage = "Error: Code=InvalidParameterValueInContainerTemplate; Message=Unable to get value using Managed identity for secret 'x'"
+        }
+
+        It 'Retries an error that matches a pattern, and returns the successful result' {
+            $script:failuresBeforeSuccess = 2
+            $entry = New-RetryDeployment -Patterns 'Unable to get value using Managed identity' -MaxAttempts 4 -DelaySeconds 10
+
+            $result = Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{}
+
+            $result.ProvisioningState | Should -Be 'Succeeded'
+            @($result).Count | Should -Be 1
+            Should -Invoke New-AzResourceGroupDeployment -Times 3 -Exactly
+            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 10 }
+            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 20 }
+            Should -Invoke Write-Warning -Times 2 -Exactly -ParameterFilter { $Message -like '*ARM deployment attempt * of 4 failed*retrying*' }
+        }
+
+        It 'Uses 3 attempts and a 15 second delay by default' {
+            $script:failuresBeforeSuccess = 99
+
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig @{} } | Should -Throw
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 3 -Exactly
+            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 15 }
+            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 30 }
+        }
+
+        It 'Applies the retry settings only to their own deployment' {
+            $script:failuresBeforeSuccess = 99
+
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity' -MaxAttempts 2) -DeploymentConfig @{} } | Should -Throw
+            Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly
+
+            $script:attempts = 0
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment) -DeploymentConfig @{} } | Should -Throw
+            Should -Invoke New-AzResourceGroupDeployment -Times 3 -Exactly
+        }
+
+        It 'Uses the same deployment name for every attempt' {
+            $script:failuresBeforeSuccess = 1
+            $script:names = [System.Collections.Generic.List[string]]::new()
+            Mock New-AzResourceGroupDeployment {
+                $script:names.Add($Name)
+                $script:attempts++
+                if ($script:attempts -le 1) { Write-Error $script:failureMessage }
+            }
+
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig @{}
+
+            $script:names.Count | Should -Be 2
+            $script:names[1] | Should -Be $script:names[0]
+        }
+
+        It 'Throws all the errors after the last attempt' {
+            $script:failuresBeforeSuccess = 99
+
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity' -MaxAttempts 3) -DeploymentConfig @{} } |
+                Should -Throw '*ARM deployment failed*Unable to get value using Managed identity*'
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 3 -Exactly
+            Should -Invoke Start-Sleep -Times 2 -Exactly
+        }
+
+        It 'Does not retry an error that matches no pattern' {
+            $script:failuresBeforeSuccess = 1
+            $script:failureMessage = 'Error: Code=AccountNameInvalid; Message=Bad name.'
+
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig @{} } |
+                Should -Throw '*AccountNameInvalid*'
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly
+            Should -Not -Invoke Start-Sleep
+        }
+
+        It 'Does not retry without any patterns' {
+            $script:failuresBeforeSuccess = 1
+
+            { Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -MaxAttempts 5) -DeploymentConfig @{} } | Should -Throw '*Managed identity*'
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly
+        }
+
+        It 'Retries an error that Az throws as a terminating error' {
+            $script:failuresBeforeSuccess = 1
+            Mock New-AzResourceGroupDeployment {
+                $script:attempts++
+                if ($script:attempts -le 1) { throw 'The deployment validation failed: Code=Conflict; a transient conflict' }
+                [PSCustomObject]@{ ProvisioningState = 'Succeeded' }
+            }
+
+            $result = Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'transient conflict') -DeploymentConfig @{}
+
+            $result.ProvisioningState | Should -Be 'Succeeded'
+            Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly
+        }
+
+        It 'Requires every pattern of an array entry to match: <Description>' -ForEach @(
+            @{ Description = 'all match'; Patterns = @('Managed identity', 'InvalidParameterValueInContainerTemplate'); ExpectedCalls = 2 }
+            @{ Description = 'one does not match'; Patterns = @('Managed identity', 'SomethingElse'); ExpectedCalls = 1 }
+        ) {
+            $script:failuresBeforeSuccess = 1
+            $entry = New-TestDeployment -Scope resourceGroup
+            # The comma keeps the array as a single entry
+            $entry.retryErrorPatterns = @(, $Patterns)
+
+            try { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } catch {}
+
+            Should -Invoke New-AzResourceGroupDeployment -Times $ExpectedCalls -Exactly
+        }
+
+        It 'Keeps the only array entry as one entry, written as in a config file' {
+            $script:failuresBeforeSuccess = 1
+            # If the outer array were unwrapped, each pattern would become an entry of its own, and the first would match
+            $entry = New-TestDeployment -Scope resourceGroup
+            $entry.retryErrorPatterns = @(
+                , @('Managed identity', 'SomethingElse')
+            )
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } | Should -Throw '*Managed identity*'
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 1 -Exactly
+        }
+
+        It 'Matches patterns as case-insensitive regular expressions' {
+            $script:failuresBeforeSuccess = 1
+
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'unable to get value using managed\s+IDENTITY') -DeploymentConfig @{}
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly
+        }
+
+        It 'Passes plain-text secrets to every attempt' {
+            $script:failuresBeforeSuccess = 1
+            $config = @{ secret = (ConvertTo-SecureString 's3cret' -AsPlainText -Force) }
+
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity') -DeploymentConfig $config
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly -ParameterFilter { $TemplateParameterObject.secret -eq 's3cret' }
+        }
+
+        It 'Retries a what-if before reporting it as a warning with ContinueOnWhatIfError' {
+            $script:failuresBeforeSuccess = 99
+
+            Invoke-ArmDeployment -ArmDeployment (New-RetryDeployment -Patterns 'Managed identity' -MaxAttempts 2) -DeploymentConfig @{} `
+                -WhatIfMode -ContinueOnWhatIfError | Should -BeNullOrEmpty
+
+            Should -Invoke New-AzResourceGroupDeployment -Times 2 -Exactly -ParameterFilter { $WhatIf }
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like '*ARM what-if failed*' }
+        }
+
+        It 'Throws for <Key> = <Value>, before deploying' -ForEach @(
+            @{ Key = 'retryMaxAttempts'; Value = 0 }
+            @{ Key = 'retryMaxAttempts'; Value = 101 }
+            @{ Key = 'retryMaxAttempts'; Value = 'abc' }
+            @{ Key = 'retryMaxAttempts'; Value = 1.5 }
+            @{ Key = 'retryDelaySeconds'; Value = -1 }
+            @{ Key = 'retryDelaySeconds'; Value = 3601 }
+        ) {
+            $entry = New-RetryDeployment -Patterns 'Managed identity'
+            $entry[$Key] = $Value
+
+            { Invoke-ArmDeployment -ArmDeployment $entry -DeploymentConfig @{} } | Should -Throw "*'$Key' must be an integer*"
+
+            Should -Not -Invoke New-AzResourceGroupDeployment
+        }
+    }
 }
 
 Describe 'Module wiring' {
@@ -457,6 +702,11 @@ Describe 'Module wiring' {
 
     It 'Calls Invoke-ArmDeployment from the deployArmTemplates task' {
         $armTasks | Should -Match 'Invoke-ArmDeployment\s+-ArmDeployment'
+    }
+
+    It 'Leaves the retry settings to each deployment entry, with no global setting in the task' {
+        $armTasks | Should -Not -Match '-Retry'
+        $armTasks | Should -Not -Match 'ArmDeploymentRetry'
     }
 
     It 'Treats <Description> as a Bicep deployment in ensureBicepVersion: <Expected>' -ForEach @(

@@ -120,9 +120,12 @@ $RequiredArmDeployments = @(
             someParameter = 'foo'               # a static value
             anotherParameter = { Get-Date }     # a dynamic value that will be evaluated at runtime
         }
+        retryErrorPatterns = @('RetryableError')    # Optional. See 'Retrying transient ARM deployment errors' below.
     }
 )
 ```
+
+The optional `retryErrorPatterns`, `retryMaxAttempts` and `retryDelaySeconds` settings retry transient errors for this deployment only. See [Retrying transient ARM deployment errors](#retrying-transient-arm-deployment-errors).
 
 The optional `scope` setting controls the ARM deployment scope. When omitted it defaults to `resourceGroup`. Supported values (case-insensitive) and the settings each requires are:
 
@@ -166,6 +169,50 @@ $RequiredArmDeployments = @(
 #### ARM deployment errors
 
 When an ARM deployment or what-if fails, the error message contains every error that Azure reports, including the inner errors of a template validation failure. The inner errors usually describe the actual problem, for example a resource provider's preflight validation error. The message also contains the deployment name, which you can use to find the deployment in the Azure portal.
+
+#### Retrying transient ARM deployment errors
+
+Some ARM deployment errors are transient and clear when the same deployment is run again, for example a race in an Azure resource provider. To retry these errors, set these optional keys on the deployment's entry in `RequiredArmDeployments`:
+
+| Key                  | Default | Description |
+| -------------------- | ------- | ----------- |
+| `retryErrorPatterns` | none    | Regular expressions that identify the deployment's transient errors. Without them, a failure is never retried. |
+| `retryMaxAttempts`   | 3       | The maximum number of attempts, including the first. An integer from 1 to 100. |
+| `retryDelaySeconds`  | 15      | The delay before the first retry. Each later retry waits this delay multiplied by the number of failed attempts so far. An integer from 0 to 3600. |
+
+```powershell
+$RequiredArmDeployments = @(
+    @{
+        templatePath = 'container-apps.bicep'
+        resourceGroupName = { $deploymentConfig.resourceGroupName }
+        location = 'uksouth'
+        retryErrorPatterns = @(
+            'RetryableError'                                            # one pattern
+            , @(                                                        # an array: all of its patterns must match
+                'Unable to get value using Managed identity'
+                'InvalidParameterValueInContainerTemplate'
+            )
+        )
+        retryMaxAttempts = 4
+        retryDelaySeconds = 15
+    }
+)
+```
+
+- The settings apply only to the deployment whose entry sets them, because a pattern for one template's transient error can match a real failure in another template.
+- The settings are static values. A scriptblock is not supported.
+- Each pattern is tested, ignoring case, against the text of all the errors that the deployment reports, including inner errors and errors that Az reports beside a `Failed` result.
+- A failure is retried when any entry matches. An entry that is an array matches only when all of its patterns match. Use the leading comma (`, @(...)`) so that PowerShell keeps the array as one entry.
+- Any other error fails the deployment immediately, as when no patterns are set.
+- Each retry writes a warning with the errors, then waits `retryDelaySeconds` multiplied by the number of failed attempts so far (with the values above: 15s, 30s, 45s).
+- A retry runs the same deployment again, with the same deployment name. ARM deployments are incremental by default, so this is safe for a template that is safe to re-deploy.
+- What-if operations are retried in the same way. With `ArmWhatIfContinueOnError`, the warning is reported only after the last attempt.
+
+#### Secret template parameters
+
+Az.Resources cannot serialize a `SecureString` inside `-TemplateParameterObject`. A template parameter whose value is a `SecureString`, from the environment configuration or from `additionalParameters`, is converted to plain text immediately before the deployment runs, after the template parameters are written to the log.
+
+To keep a secret out of the log, keep it as a `SecureString` in the configuration: the log shows `System.Security.SecureString` instead of the value. Declare the template parameter with `@secure()` so that ARM does not log or return it. A secret given as a plain string is written to the log.
 
 ### Tasks
 
@@ -237,7 +284,8 @@ Supported resource types are:
 | `connectAzure`                 | Configures up the Azure PowerShell and/or Azure CLI connection context for the deployment        |
 | `enableTemporaryNetworkAccess` | Apply temporary network access rules to the configured Azure resources.                          |
 | `getDeploymentIdentity`        | Derive the current user's ObjectId (aka PrincipalId) using the current Azure PowerShell context. |
-| `removeTemporaryNetworkAccess` | Remove temporary network access rules from the configured Azure resources. Uses the 'OnExitActions' extensibility point provided by [ZeroFailed.DevOps.Common](https://github.com/zerofailed/ZeroFailed.DevOps.Common/blob/main/HELP.md#properties-1) to ensure temporary rules are removed even in the event of errors. |
+
+***NOTE**: There is no task that removes the temporary network access rules. Instead, the extension registers a cleanup action with the 'OnExitActions' extensibility point provided by [ZeroFailed.DevOps.Common](https://github.com/zerofailed/ZeroFailed.DevOps.Common/blob/main/HELP.md#properties-1). The action removes the rules when the process ends, even after an error. Because it is not a task, it does not appear in the output of `./deploy.ps1 -Tasks '?'`.*
 
 
 <!-- END_GENERATED_HELP -->

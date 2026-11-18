@@ -4,7 +4,7 @@ external help file: ZeroFailed.Deploy.Azure-Help.xml
 HelpUri: ''
 Locale: en-US
 Module Name: ZeroFailed.Deploy.Azure
-ms.date: 10/17/2026
+ms.date: 11/18/2026
 PlatyPS schema version: 2024-05-01
 title: Publish-FlexConsumptionFunctionApp
 ---
@@ -21,8 +21,8 @@ Deploys a ZIP package to a Function App on the Flex Consumption plan, and waits 
 
 ```
 Publish-FlexConsumptionFunctionApp [-ResourceGroupName] <string> [-Name] <string>
- [-ArchivePath] <string> [[-TimeoutSeconds] <int>] [[-StorageAccessRetrySeconds] <int>] [-RemoteBuild]
- [<CommonParameters>]
+ [-ArchivePath] <string> [[-TimeoutSeconds] <int>] [[-StorageAccessRetrySeconds] <int>]
+ [-RemoteBuild] [<CommonParameters>]
 ```
 
 ## ALIASES

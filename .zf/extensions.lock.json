@@ -1,0 +1,47 @@
+{
+  "lockVersion": 1,
+  "extensions": {
+    "ZeroFailed.Build.Common": {
+      "source": {
+        "type": "git",
+        "folderPath": "module",
+        "repository": "https://github.com/zerofailed/ZeroFailed.Build.Common"
+      },
+      "requested": "main",
+      "resolved": "44282e5a9aadb577d1c17a7b5f3533eea25cc9c1",
+      "contentHash": "sha256:2877d270e916982677e13a4c52424f42b21a1d0e5519cf1fce44a09a12582f6a",
+      "direct": false,
+      "requiredBy": [
+        "ZeroFailed.Build.PowerShell"
+      ]
+    },
+    "ZeroFailed.Build.PowerShell": {
+      "source": {
+        "type": "git",
+        "folderPath": "module",
+        "repository": "https://github.com/zerofailed/ZeroFailed.Build.PowerShell.git"
+      },
+      "requested": "main",
+      "resolved": "e81bc6dd6caf7e1e7ef7a19bdab836faaf90c6f3",
+      "contentHash": "sha256:20718d4131ce155fc829af325aa01542eff88ca124bc970e29cebc19ab466a63",
+      "direct": true,
+      "requiredBy": []
+    },
+    "ZeroFailed.DevOps.Common": {
+      "source": {
+        "type": "git",
+        "folderPath": "module",
+        "preRelease": false,
+        "repository": "https://github.com/zerofailed/ZeroFailed.DevOps.Common"
+      },
+      "requested": "[2.0.0,3.0.0)",
+      "resolved": "c4e5d102de59249f87d97420813b235c47568b85",
+      "resolvedRef": "refs/tags/2.4.3",
+      "contentHash": "sha256:2434243da7607d2cba16d47ae505325f8881647dce2a8eb9728ff085d9e5b6b4",
+      "direct": false,
+      "requiredBy": [
+        "ZeroFailed.Build.Common"
+      ]
+    }
+  }
+}
