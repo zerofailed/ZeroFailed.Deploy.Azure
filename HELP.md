@@ -284,7 +284,8 @@ Supported resource types are:
 | `connectAzure`                 | Configures up the Azure PowerShell and/or Azure CLI connection context for the deployment        |
 | `enableTemporaryNetworkAccess` | Apply temporary network access rules to the configured Azure resources.                          |
 | `getDeploymentIdentity`        | Derive the current user's ObjectId (aka PrincipalId) using the current Azure PowerShell context. |
-| `removeTemporaryNetworkAccess` | Remove temporary network access rules from the configured Azure resources. Uses the 'OnExitActions' extensibility point provided by [ZeroFailed.DevOps.Common](https://github.com/zerofailed/ZeroFailed.DevOps.Common/blob/main/HELP.md#properties-1) to ensure temporary rules are removed even in the event of errors. |
+
+***NOTE**: There is no task that removes the temporary network access rules. Instead, the extension registers a cleanup action with the 'OnExitActions' extensibility point provided by [ZeroFailed.DevOps.Common](https://github.com/zerofailed/ZeroFailed.DevOps.Common/blob/main/HELP.md#properties-1). The action removes the rules when the process ends, even after an error. Because it is not a task, it does not appear in the output of `./deploy.ps1 -Tasks '?'`.*
 
 
 <!-- END_GENERATED_HELP -->

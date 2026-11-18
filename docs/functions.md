@@ -12,6 +12,9 @@ This document provides a complete reference for all exported functions in the Ze
 | [Assert-PrivateEndpointConnectionApproval](functions/Assert-PrivateEndpointConnectionApproval.md) | Ensures that a private endpoint connection to an Azure resource is approved, e.g. one requested by a Fabric or Synapse managed private endpoint. |
 | [Publish-FlexConsumptionFunctionApp](functions/Publish-FlexConsumptionFunctionApp.md) | Deploys a ZIP package to a Function App on the Flex Consumption plan, and waits for the deployment to finish. |
 | [Test-FlexConsumptionFunctionApp](functions/Test-FlexConsumptionFunctionApp.md) | Checks whether a Function App runs on the Flex Consumption plan. |
+| [Invoke-ArmDeployment](functions/Invoke-ArmDeployment.md) | Runs a single ARM deployment, or its what-if, at the scope that the deployment entry specifies. |
+| [Get-KeyVaultSecretByUri](functions/Get-KeyVaultSecretByUri.md) | Enables querying a Key Vault Secret via its URI when using all versions of the Az.KeyVault module. |
+| [Set-TemporaryAzureResourceNetworkAccess](functions/Set-TemporaryAzureResourceNetworkAccess.md) | Manages the addition and removal of temporary network access rules for different Azure resource types. |
 
 ---
 
