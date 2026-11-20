@@ -1,4 +1,24 @@
 #Requires -Version 7.4
+<#
+.PARAMETER ZfModulePath
+    The path to import the ZeroFailed module from, instead of installing it. This is useful when testing a local
+    copy of ZeroFailed.
+.PARAMETER ZfModuleVersion
+    The version of the ZeroFailed module to install and import.
+.PARAMETER ZfModuleRepository
+    The PowerShell repository to install the ZeroFailed module from: a registered repository name, or a URL. For a
+    URL, a repository that is already registered with that URL (and any credentials it has) is used. Otherwise, the
+    URL is registered as a new repository. The default is the ZeroFailed GitHub Packages feed. GitHub Packages needs
+    a token, even for public packages: when the GITHUB_TOKEN or GH_TOKEN environment variable is set, it is used as
+    the credential. If the module cannot be installed from this repository, it is installed from PSGallery.
+.PARAMETER ZfExtensionsLockMode
+    How the ZeroFailed extensions lock file is used. 'Write' resolves the extensions and updates the lock file.
+    'Frozen' installs the versions in the lock file, and fails if the extensions differ from it. 'Off' does not
+    use the lock file. Defaults to 'Frozen' in GitHub Actions, and to 'Write' elsewhere. The
+    ZF_EXTENSIONS_LOCK_MODE environment variable takes precedence over this parameter.
+.PARAMETER InvokeBuildModuleVersion
+    The version of the InvokeBuild module to be used.
+#>
 [CmdletBinding()]
 param (
     [Parameter(Position=0)]
@@ -21,7 +41,7 @@ param (
     [string] $ZfModulePath,
 
     [Parameter()]
-    [string] $ZfModuleVersion = "2.0.1",
+    [string] $ZfModuleVersion = "2.0.3",
 
     [Parameter()]
     [string] $ZfModuleRepository = "https://nuget.pkg.github.com/zerofailed/index.json",
